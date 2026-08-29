@@ -39,7 +39,14 @@ B05002_LABELS = {
 }
 B05006_LABELS = {
     "B05006_001E": "Estimate!!Total:",
+    # Parent row with trailing colon (has children nested under it)
+    "B05006_049E": "Estimate!!Total:!!Latin America:",
+    # Child of Latin America
     "B05006_050E": "Estimate!!Total:!!Latin America:!!Mexico",
+    # Sibling-prefix case: two leaf rows where one name is a prefix of the other
+    # Both are under Caribbean and both should be included (not parent/child)
+    "B05006_051E": "Estimate!!Total:!!Caribbean:!!Dominica",
+    "B05006_052E": "Estimate!!Total:!!Caribbean:!!Dominican Republic",
 }
 
 # The two tracts intentionally have UNEQUAL table totals (1000 vs 3000) for
@@ -72,9 +79,9 @@ B05002_DATA = pd.DataFrame(
 )
 B05006_DATA = pd.DataFrame(
     {
-        "GEOID": ["36061000100", "36061000100", "36061000200", "36061000200"],
-        "variable": ["B05006_001E", "B05006_050E"] * 2,
-        "estimate": [250.0, 60.0, 400.0, 90.0],
+        "GEOID": (["36061000100"] * 5 + ["36061000200"] * 5),
+        "variable": (["B05006_001E", "B05006_049E", "B05006_050E", "B05006_051E", "B05006_052E"] * 2),
+        "estimate": [250.0, 70.0, 60.0, 10.0, 5.0, 400.0, 105.0, 90.0, 15.0, 8.0],
     }
 )
 
@@ -125,3 +132,29 @@ def test_build_nta_demographics_sums_before_dividing():
     assert row["pct_immigrant"] == pytest.approx(28.75)
     # Detailed national origin: Mexico summed=60+90=150, total(B05006)=250+400=650 -> ~23.077
     assert row["pct_foreign_born_mexico"] == pytest.approx(100 * 150 / 650)
+
+    # Test leaf-node detection: parent-child hierarchy case
+    # "Latin America:" (B05006_049E) is a parent with "!!" in its label but has
+    # children ("Mexico"), so it should NOT be included in country columns.
+    # The child "Mexico" should still be included.
+    assert "pct_foreign_born_latin_america" not in result.columns, \
+        "Parent row with further sub-breakdowns should be excluded from country columns"
+    assert "pct_foreign_born_mexico" in result.columns, \
+        "Child row under parent should be included in country columns"
+
+    # Test leaf-node detection: sibling-prefix trap case
+    # "Dominica" and "Dominican Republic" are siblings under the same parent
+    # (Caribbean), not parent/child. Even though "Dominican Republic".startswith("Dominica")
+    # is True as a plain string, the leaf-detection logic uses "!!" boundary checks
+    # and should include both as separate columns.
+    assert "pct_foreign_born_dominica" in result.columns, \
+        "Leaf 'Dominica' should be included even though it is a prefix of sibling 'Dominican Republic'"
+    dominica_slug_estim = 10.0 + 15.0  # 25 total
+    assert row["pct_foreign_born_dominica"] == pytest.approx(100 * dominica_slug_estim / 650), \
+        f"Dominica percentage should be {100 * dominica_slug_estim / 650}"
+
+    assert "pct_foreign_born_dominican_republic" in result.columns, \
+        "Leaf 'Dominican Republic' should be included as separate sibling"
+    dominican_slug_estim = 5.0 + 8.0  # 13 total
+    assert row["pct_foreign_born_dominican_republic"] == pytest.approx(100 * dominican_slug_estim / 650), \
+        f"Dominican Republic percentage should be {100 * dominican_slug_estim / 650}"
