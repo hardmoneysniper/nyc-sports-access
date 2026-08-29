@@ -777,7 +777,11 @@ TRACT_TO_NTA = pd.DataFrame(
 B03002_LABELS = {
     "B03002_001E": "Estimate!!Total:",
     "B03002_003E": "Estimate!!Total:!!Not Hispanic or Latino:!!White alone",
-    "B03002_012E": "Estimate!!Total:!!Hispanic or Latino",
+    # Real ACS labels carry a trailing colon on rows with further
+    # sub-breakdowns (confirmed against the live API in Task 6) -- this
+    # fixture intentionally includes it so the test exercises the
+    # rstrip(":") handling in demographics.py, not a simplified label.
+    "B03002_012E": "Estimate!!Total:!!Hispanic or Latino:",
 }
 B02001_LABELS = {
     "B02001_001E": "Estimate!!Total:",
@@ -913,15 +917,24 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     b05006_labels = fetch_group_labels("B05006")
     b05006_data = fetch_acs_group("B05006")
 
+    # Real ACS labels sometimes carry a trailing colon on category rows that
+    # have further sub-breakdowns (e.g. "...Hispanic or Latino:" when the
+    # table then breaks Hispanic/Latino down further) -- confirmed against
+    # the live API in Task 6. Every endswith() check below strips a trailing
+    # colon first so matching doesn't depend on whether a given vintage adds
+    # or omits it.
     b03002_total_var = _variable_for_label(b03002_labels, lambda l: l == "Estimate!!Total:")
     white_alone_var = _variable_for_label(
-        b03002_labels, lambda l: "Not Hispanic or Latino" in l and l.endswith("White alone")
+        b03002_labels,
+        lambda l: "Not Hispanic or Latino" in l and l.rstrip(":").endswith("White alone"),
     )
-    hispanic_var = _variable_for_label(b03002_labels, lambda l: l.endswith("Hispanic or Latino"))
+    hispanic_var = _variable_for_label(
+        b03002_labels, lambda l: l.rstrip(":").endswith("Hispanic or Latino")
+    )
 
     b02001_total_var = _variable_for_label(b02001_labels, lambda l: l == "Estimate!!Total:")
     black_var = _variable_for_label(b02001_labels, lambda l: "Black or African American alone" in l)
-    asian_var = _variable_for_label(b02001_labels, lambda l: l.endswith("Asian alone"))
+    asian_var = _variable_for_label(b02001_labels, lambda l: l.rstrip(":").endswith("Asian alone"))
     two_or_more_var = _variable_for_label(b02001_labels, lambda l: "Two or more races" in l)
 
     b05002_total_var = _variable_for_label(b05002_labels, lambda l: l == "Estimate!!Total:")
