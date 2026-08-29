@@ -29,6 +29,19 @@ def _country_slug(label: str) -> str:
     return slug
 
 
+def _is_leaf_label(label: str, all_labels: list[str]) -> bool:
+    """A row is a leaf (most granular level available) if no other row is
+    nested underneath it. Nesting must be checked at a "!!" hierarchy
+    boundary, not as a raw string prefix -- otherwise a label like
+    "...Caribbean:!!Dominica" is wrongly treated as the parent of the
+    sibling row "...Caribbean:!!Dominican Republic" (confirmed against the
+    live B05006 table: "Dominican Republic".startswith("Dominica") is True
+    as a plain string check, even though the two are siblings, not
+    parent/child).
+    """
+    return not any(other != label and other.startswith(label + "!!") for other in all_labels)
+
+
 def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     b03002_labels = fetch_group_labels("B03002")
     b03002_data = fetch_acs_group("B03002")
@@ -45,27 +58,58 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     # the live API in Task 6. Every endswith() check below strips a trailing
     # colon first so matching doesn't depend on whether a given vintage adds
     # or omits it.
+    #
+    # Label casing/punctuation is also NOT stable across tables (confirmed
+    # against the live 2024 ACS5 API): B02001 uses Title Case ("Two or More
+    # Races"), B05002 hyphenates ("Foreign-born"), and B03002's Hispanic row
+    # has a sibling "Not Hispanic or Latino" row whose label is a superstring
+    # of "Hispanic or Latino" -- a plain substring/endswith check on the full
+    # label matches both rows. Every predicate below therefore either (a)
+    # compares only the exact last "!!"-separated hierarchy segment, or (b)
+    # lowercases (and, where relevant, hyphen-normalizes) both sides before a
+    # substring check, so it can't accidentally match a sibling row that
+    # merely shares a suffix/substring.
     b03002_total_var = _variable_for_label(b03002_labels, lambda l: l == "Estimate!!Total:")
     white_alone_var = _variable_for_label(
         b03002_labels,
-        lambda l: "Not Hispanic or Latino" in l and l.rstrip(":").endswith("White alone"),
+        lambda l: "not hispanic or latino" in l.lower() and l.rstrip(":").lower().endswith("white alone"),
     )
     hispanic_var = _variable_for_label(
-        b03002_labels, lambda l: l.rstrip(":").endswith("Hispanic or Latino")
+        b03002_labels, lambda l: l.rstrip(":").rsplit("!!", 1)[-1] == "Hispanic or Latino"
     )
 
     b02001_total_var = _variable_for_label(b02001_labels, lambda l: l == "Estimate!!Total:")
-    black_var = _variable_for_label(b02001_labels, lambda l: "Black or African American alone" in l)
-    asian_var = _variable_for_label(b02001_labels, lambda l: l.rstrip(":").endswith("Asian alone"))
-    two_or_more_var = _variable_for_label(b02001_labels, lambda l: "Two or more races" in l)
+    black_var = _variable_for_label(
+        b02001_labels, lambda l: "black or african american alone" in l.lower()
+    )
+    asian_var = _variable_for_label(b02001_labels, lambda l: l.rstrip(":").lower().endswith("asian alone"))
+    # A plain "in" substring check on the full label would also match the
+    # table's own child breakdown rows (e.g. "...Two or More Races:!!Two
+    # races including Some Other Race" -- confirmed against the live API),
+    # since "two or more races" appears as a prefix segment inside those
+    # labels too. endswith() on the last segment (post rstrip) selects only
+    # the "Two or More Races:" total row itself.
+    two_or_more_var = _variable_for_label(
+        b02001_labels, lambda l: l.rstrip(":").lower().endswith("two or more races")
+    )
 
     b05002_total_var = _variable_for_label(b05002_labels, lambda l: l == "Estimate!!Total:")
-    foreign_born_var = _variable_for_label(b05002_labels, lambda l: "Foreign born" in l)
+    # Same trap as two_or_more_var above: B05002 nests citizenship/region
+    # breakdowns under the "Foreign-born:" row itself (e.g. "...Foreign-born:
+    # !!Naturalized U.S. citizen!!Asia" -- confirmed against the live API),
+    # so a plain "in" substring check matches those child rows too.
+    # endswith() on the last segment selects only the "Foreign-born:" total.
+    foreign_born_var = _variable_for_label(
+        b05002_labels, lambda l: l.rstrip(":").lower().replace("-", " ").endswith("foreign born")
+    )
 
     b05006_total_var = _variable_for_label(b05006_labels, lambda l: l == "Estimate!!Total:")
+    b05006_all_labels = list(b05006_labels.values())
     country_vars = {
         code: label for code, label in b05006_labels.items()
-        if code != b05006_total_var and "!!" in label
+        if code != b05006_total_var
+        and "!!" in label
+        and _is_leaf_label(label, b05006_all_labels)
     }
 
     b03002_total = _summed_by_nta(b03002_data, b03002_total_var, tract_to_nta)
@@ -92,6 +136,10 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     # Instead, let the dict-of-Series construction keep "NTA2020" as the
     # (unlabeled-as-column) index, then reset_index() to promote it to a
     # real column and give the frame a fresh default row index.
+    # NOTE: no explicit guard against total == 0 here -- an NTA with zero
+    # total population produces NaN (0/0) or inf (n/0), and NaN/inf is
+    # actually the correct signal for "no population data for this NTA",
+    # not a bug to hide.
     result = pd.DataFrame({
         "pct_non_white": 100 * (1 - white_alone / b03002_total),
         "pct_hispanic_or_latino": 100 * hispanic / b03002_total,
@@ -103,12 +151,14 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
             "pct_two_or_more_races": 100 * two_or_more / b02001_total,
         }).reset_index(),
         on="NTA2020",
+        how="outer",
     )
     result = result.merge(
         pd.DataFrame({
             "pct_immigrant": 100 * foreign_born / b05002_total,
         }).reset_index(),
         on="NTA2020",
+        how="outer",
     )
 
     for code, label in country_vars.items():
