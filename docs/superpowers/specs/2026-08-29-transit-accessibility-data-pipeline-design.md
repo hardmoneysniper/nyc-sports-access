@@ -72,11 +72,12 @@ Out of scope for this phase (not requested): language/LEP tables, income/poverty
     - Bus, per company: `http://web.mta.info/developers/data/nyct/bus/google_transit_{manhattan,brooklyn,bronx,queens,staten_island}.zip`
     - MTA Bus Company: `http://web.mta.info/developers/data/busco/google_transit.zip`
     - NYC Ferry: `http://nycferry.connexionz.net/rtt/public/resource/gtfs.zip`
-- Departure time / time-of-week windows: travel time is computed separately for **5 windows**, taking the median travel time across departures within each window, per tract→facility-type pair. This produces 5 parallel time values per (tract, facility-type-category) combination rather than a single number:
+- Departure time / time-of-week windows: travel time is computed separately for **6 windows**, taking the median travel time across departures within each window, per tract→facility-type pair. This produces 6 parallel time values per (tract, facility-type-category) combination rather than a single number:
   - Weekday morning: 7:00–9:00am
   - Weekday noon: 11:00am–1:00pm
   - Weekday evening: 5:00–7:00pm
   - Weekend morning: 9:00–11:00am
+  - Weekend noon: 11:00am–1:00pm
   - Weekend evening: 5:00–7:00pm
   - A representative non-holiday weekday and weekend day are chosen from within the GTFS feeds' calendar validity window during implementation.
 - Origin point per tract: Shapely "point on surface" (guaranteed to fall inside the polygon), not a naive arithmetic centroid, to avoid landing outside concave/oddly-shaped tracts.

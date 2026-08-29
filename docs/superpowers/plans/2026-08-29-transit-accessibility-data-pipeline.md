@@ -14,7 +14,7 @@
 - Census tract is the calculation unit only; NTA is the only display/output unit. No dashboard code, schema, or UI decisions belong in this plan.
 - All demographic percentages are computed from **summed raw counts at the NTA level**, never from averaged tract-level percentages.
 - Facility filter: `featuresta == 'Active'` only.
-- Time windows (5, each computed independently): weekday morning 7:00–9:00am, weekday noon 11:00am–1:00pm, weekday evening 5:00–7:00pm, weekend morning 9:00–11:00am, weekend evening 5:00–7:00pm.
+- Time windows (6, each computed independently): weekday morning 7:00–9:00am, weekday noon 11:00am–1:00pm, weekday evening 5:00–7:00pm, weekend morning 9:00–11:00am, weekend noon 11:00am–1:00pm, weekend evening 5:00–7:00pm.
 - Intra-tract walking offset: bounding-box 4-corner distances to the tract's "point on surface", averaged, halved, converted to time at 3.0 mph (4.8 km/h) — added flat to every OD time from that tract. This is separate from r5py's own internal access/egress walk speed and must not be conflated with it.
 - GTFS feeds: NYCT subway + all MTA bus companies + NYC Ferry only. No LIRR/Metro-North/SIR.
 - `data/` is gitignored (large shapefiles, PDF, downloaded network files, processed outputs). Only code and specs are committed.
@@ -161,12 +161,13 @@ def test_sport_type_columns_excludes_non_sport_attributes():
     assert len(config.SPORT_TYPE_COLUMNS) == 23
 
 
-def test_time_windows_has_five_entries_with_start_and_duration():
+def test_time_windows_has_six_entries_with_start_and_duration():
     assert set(config.TIME_WINDOWS) == {
         "weekday_morning",
         "weekday_noon",
         "weekday_evening",
         "weekend_morning",
+        "weekend_noon",
         "weekend_evening",
     }
     morning = config.TIME_WINDOWS["weekday_morning"]
@@ -249,6 +250,10 @@ TIME_WINDOWS = {
     },
     "weekend_morning": {
         "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(9, 0),
+        "duration": datetime.timedelta(hours=2), "is_weekend": True,
+    },
+    "weekend_noon": {
+        "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(11, 0),
         "duration": datetime.timedelta(hours=2), "is_weekend": True,
     },
     "weekend_evening": {
@@ -1598,7 +1603,7 @@ if __name__ == "__main__":
 ```bash
 python run_pipeline.py
 ```
-Expected: runs to completion without exceptions (this is a long-running step — full 2,325 tracts × 23 sport types × 5 windows; if runtime is impractically long, consider running per-sport-type batches and checkpointing intermediate `tract_times` results to disk before aggregation, rather than holding the whole computation in one process).
+Expected: runs to completion without exceptions (this is a long-running step — full 2,325 tracts × 23 sport types × 6 windows; if runtime is impractically long, consider running per-sport-type batches and checkpointing intermediate `tract_times` results to disk before aggregation, rather than holding the whole computation in one process).
 
 - [ ] **Step 3: Sanity-check the output**
 
@@ -1631,7 +1636,7 @@ git commit -m "feat: add end-to-end pipeline orchestration script"
 
 ## Self-Review Notes
 
-- **Spec coverage:** Geography/joins → Task 3. Demographic categories (6 + national origin) → Tasks 6-7. Facility filtering/typing → Task 5. r5py network + 5 time windows + intra-tract offset → Tasks 4, 8-9. Tract→NTA population-weighted aggregation → Task 10. Output tables → Task 11. Full run → Task 12.
+- **Spec coverage:** Geography/joins → Task 3. Demographic categories (6 + national origin) → Tasks 6-7. Facility filtering/typing → Task 5. r5py network + 6 time windows + intra-tract offset → Tasks 4, 8-9. Tract→NTA population-weighted aggregation → Task 10. Output tables → Task 11. Full run → Task 12.
 - **Placeholder scan:** No TBD/TODO; the only forward-reference is `REFERENCE_WEEKDAY`/`REFERENCE_WEEKEND_DAY`, which is handled by an explicit verification step (Task 9, Step 1) rather than left vague.
 - **Type consistency:** `GEOID` and `NTA2020` are used consistently as the join keys across `geography`, `demographics`, `travel_time`, `aggregate_travel_time`, and `build_output`. `sport_type`/`window_name`/`travel_time_minutes` column names are consistent from Task 9 through Task 11.
 - **Scope:** This plan stops at the two output tables. No dashboard, UI, or Mapbox integration code is included — that is explicitly a separate future phase per the spec.
