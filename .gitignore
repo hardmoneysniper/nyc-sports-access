@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+data/
+*.pdf
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
