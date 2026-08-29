@@ -696,7 +696,6 @@ def fetch_group_labels(table_id: str) -> dict[str, str]:
 def fetch_acs_group(table_id: str) -> pd.DataFrame:
     rows = []
     for county_fips in config.NYC_COUNTY_FIPS.values():
-        url = config.CENSUS_ACS_YEAR  # placeholder to keep line short below
         response = requests.get(
             BASE_URL.format(year=config.CENSUS_ACS_YEAR),
             params={
@@ -1137,10 +1136,6 @@ Confirm `config.REFERENCE_WEEKDAY` and `config.REFERENCE_WEEKEND_DAY` fall withi
 import pandas as pd
 
 from pipeline import travel_time
-
-
-class _FakeMatrixResult(pd.DataFrame):
-    pass
 
 
 def _fake_matrix_fn(transport_network, origins, destinations, departure, departure_time_window, percentiles):
