@@ -1,7 +1,7 @@
 import math
 import pytest
 
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 
 from pipeline import offsets
 
@@ -28,7 +28,8 @@ def test_walking_offset_for_a_known_square():
 
 
 def test_walking_offset_is_nonnegative_for_irregular_polygon():
-    irregular = Polygon([(0, 0), (400, 0), (600, 300), (300, 900), (0, 500)])
+    # A genuinely concave "C" shape (polygon.area != polygon.convex_hull.area)
+    irregular = Polygon([(0, 0), (10, 0), (10, 10), (7, 10), (7, 3), (3, 3), (3, 10), (0, 10)])
     origin = offsets.compute_origin_point(irregular)
     minutes = offsets.compute_walking_offset_minutes(irregular, origin)
     assert minutes > 0

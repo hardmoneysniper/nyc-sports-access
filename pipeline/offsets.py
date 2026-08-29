@@ -7,6 +7,12 @@ standing exactly at the origin point needs: it averages the distance from
 the tract's bounding-box corners to the origin, halves it, and converts to
 time at a fixed walking speed. This is independent of r5py's own internal
 access/egress walk speed for the transit leg itself.
+
+IMPORTANT: All geometry inputs must be in a feet-based projected CRS
+(e.g., EPSG:2263, as produced by pipeline.geography). The 5280 ft/mile
+conversion in compute_walking_offset_minutes is only valid under that
+assumption; passing geometry in other CRS (e.g., WGS84 degrees) will
+produce nonsense output with no error.
 """
 import shapely.geometry
 
