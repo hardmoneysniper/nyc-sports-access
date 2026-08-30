@@ -161,9 +161,25 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
         how="outer",
     )
 
+    # Guards against two B05006 leaf labels slugifying to the same string
+    # (e.g. differently-punctuated variants of the same country name in a
+    # future ACS vintage) silently clobbering one column with another --
+    # consistent with the module's fail-loudly discipline elsewhere
+    # (_variable_for_label already raises on non-unique matches).
+    slug_to_code_label: dict[str, tuple[str, str]] = {}
     for code, label in country_vars.items():
         slug = _country_slug(label)
+        column = f"pct_foreign_born_{slug}"
+        if slug in slug_to_code_label:
+            prior_code, prior_label = slug_to_code_label[slug]
+            raise ValueError(
+                f"Country slug collision: B05006 codes {prior_code!r} "
+                f"({prior_label!r}) and {code!r} ({label!r}) both slugify to "
+                f"{slug!r}, which would silently overwrite column {column!r}."
+            )
+        slug_to_code_label[slug] = (code, label)
+
         country_by_nta = _summed_by_nta(b05006_data, code, tract_to_nta)
-        result[f"pct_foreign_born_{slug}"] = 100 * country_by_nta.reindex(result["NTA2020"]).values / b05006_total.reindex(result["NTA2020"]).values
+        result[column] = 100 * country_by_nta.reindex(result["NTA2020"]).values / b05006_total.reindex(result["NTA2020"]).values
 
     return result

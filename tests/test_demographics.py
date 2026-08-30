@@ -158,3 +158,40 @@ def test_build_nta_demographics_sums_before_dividing():
     dominican_slug_estim = 5.0 + 8.0  # 13 total
     assert row["pct_foreign_born_dominican_republic"] == pytest.approx(100 * dominican_slug_estim / 650), \
         f"Dominican Republic percentage should be {100 * dominican_slug_estim / 650}"
+
+
+# Two distinct B05006 leaf labels ("Georgia" under two different parent
+# regions) that slugify to the identical string -- simulates the ACS
+# publishing the same country name under more than one region breakdown.
+# Without a collision guard, the second write to
+# result["pct_foreign_born_georgia"] would silently clobber the first
+# rather than raising, hiding a real data-modeling problem.
+B05006_LABELS_WITH_COLLISION = {
+    "B05006_001E": "Estimate!!Total:",
+    "B05006_100E": "Estimate!!Total:!!Europe:!!Georgia",
+    "B05006_101E": "Estimate!!Total:!!Asia:!!Georgia",
+}
+B05006_DATA_WITH_COLLISION = pd.DataFrame(
+    {
+        "GEOID": ["36061000100", "36061000100", "36061000100"],
+        "variable": ["B05006_001E", "B05006_100E", "B05006_101E"],
+        "estimate": [100.0, 10.0, 20.0],
+    }
+)
+
+
+def test_build_nta_demographics_raises_on_country_slug_collision():
+    def fake_fetch_group_labels(table_id):
+        if table_id == "B05006":
+            return B05006_LABELS_WITH_COLLISION
+        return _fake_fetch_group_labels(table_id)
+
+    def fake_fetch_acs_group(table_id):
+        if table_id == "B05006":
+            return B05006_DATA_WITH_COLLISION
+        return _fake_fetch_acs_group(table_id)
+
+    with patch("pipeline.demographics.fetch_group_labels", side_effect=fake_fetch_group_labels), \
+         patch("pipeline.demographics.fetch_acs_group", side_effect=fake_fetch_acs_group):
+        with pytest.raises(ValueError, match="Country slug collision"):
+            demographics.build_nta_demographics(TRACT_TO_NTA)
