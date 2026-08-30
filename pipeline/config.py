@@ -30,10 +30,15 @@ SPORT_TYPE_COLUMNS = [
 ]
 
 # Reference dates: must fall within the downloaded GTFS feeds' calendar
-# validity window. Placeholder values below are checked/adjusted in Task 9
-# Step 1 against the actual calendar.txt of the downloaded feeds.
-REFERENCE_WEEKDAY = datetime.date(2026, 9, 15)   # a Tuesday
-REFERENCE_WEEKEND_DAY = datetime.date(2026, 9, 19)  # a Saturday
+# validity window. Values below were re-validated in Task 12 Step 1 against
+# the actual calendar.txt of all freshly re-downloaded feeds (subway, ferry,
+# and all six bus feeds) -- not just subway's. NYC bus GTFS feeds publish a
+# short rolling validity window (the previous 2026-09-15/19 placeholders,
+# valid against subway/ferry, were already outside every bus feed's window,
+# which ended 2026-09-04/05 at the time of this run); these dates were
+# chosen to fall inside the intersection of all eight feeds' windows.
+REFERENCE_WEEKDAY = datetime.date(2026, 9, 1)   # a Tuesday
+REFERENCE_WEEKEND_DAY = datetime.date(2026, 9, 5)  # a Saturday
 
 TIME_WINDOWS = {
     "weekday_morning": {

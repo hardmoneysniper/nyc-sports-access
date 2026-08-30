@@ -56,3 +56,44 @@ def download_gtfs_feeds() -> list[Path]:
 def download_osm_extract(url: str) -> Path:
     destination = config.NETWORK_DIR / "new-york.osm.pbf"
     return _download(url, destination)
+
+
+def validate_reference_dates() -> None:
+    """Check config.REFERENCE_WEEKDAY/REFERENCE_WEEKEND_DAY against every
+    downloaded GTFS feed's calendar.txt validity window, not just one feed.
+
+    NYC bus GTFS feeds are published with short rolling validity windows, so
+    a reference date that is valid against (e.g.) the subway feed can easily
+    fall outside a bus feed's window by the time the full pipeline actually
+    runs. Raises loudly (rather than silently routing around a feed with no
+    active service on the reference date) so config.py's reference dates get
+    fixed before the expensive real run, not discovered as an unexplained gap
+    in the output.
+    """
+    import zipfile
+    import pandas as pd
+
+    for gtfs_path in config.NETWORK_DIR.glob("*.zip"):
+        with zipfile.ZipFile(gtfs_path) as z:
+            if "calendar.txt" not in z.namelist():
+                continue  # some feeds (e.g. ferry) may only use calendar_dates.txt
+            with z.open("calendar.txt") as f:
+                calendar = pd.read_csv(f, dtype=str)
+        for reference_date, label in [
+            (config.REFERENCE_WEEKDAY, "REFERENCE_WEEKDAY"),
+            (config.REFERENCE_WEEKEND_DAY, "REFERENCE_WEEKEND_DAY"),
+        ]:
+            date_int = int(reference_date.strftime("%Y%m%d"))
+            in_range = (
+                (calendar["start_date"].astype(int) <= date_int)
+                & (calendar["end_date"].astype(int) >= date_int)
+            )
+            if not in_range.any():
+                raise ValueError(
+                    f"{label} ({reference_date}) is outside {gtfs_path.name}'s "
+                    f"calendar.txt validity window (min start_date="
+                    f"{calendar['start_date'].min()}, max end_date="
+                    f"{calendar['end_date'].max()}). Update config.REFERENCE_WEEKDAY/"
+                    f"REFERENCE_WEEKEND_DAY to dates within every downloaded feed's "
+                    f"validity window before running the full pipeline."
+                )
