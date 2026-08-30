@@ -1519,7 +1519,63 @@ git commit -m "feat: add tract and NTA output table assembly"
 - Consumes: every module above.
 - Produces: `data/processed/nta_output.geojson`, `data/processed/tract_output.csv` (both gitignored).
 
-- [ ] **Step 1: Write `run_pipeline.py`**
+- [ ] **Step 1: Refresh GTFS feeds and validate reference dates before running**
+
+Task 9's real smoke-run discovered that NYC bus GTFS feeds are published with short rolling validity windows (the copies downloaded in Task 8 were already found to expire days before `config.REFERENCE_WEEKDAY`/`REFERENCE_WEEKEND_DAY`, while subway/ferry covered them) — so by the time this task actually runs, ALL downloaded feeds are likely stale and must be refreshed, and the reference dates must be checked against every feed's calendar, not just subway's.
+
+Re-download fresh feeds first:
+```bash
+python -c "
+from pipeline import network_acquisition
+network_acquisition.download_gtfs_feeds()
+print('GTFS feeds refreshed.')
+"
+```
+
+Then add a validation helper to `pipeline/network_acquisition.py` that checks the reference dates against every feed's calendar, not just one:
+
+```python
+def validate_reference_dates() -> None:
+    import zipfile
+    import pandas as pd
+
+    for gtfs_path in config.NETWORK_DIR.glob("*.zip"):
+        with zipfile.ZipFile(gtfs_path) as z:
+            if "calendar.txt" not in z.namelist():
+                continue  # some feeds (e.g. ferry) may only use calendar_dates.txt
+            with z.open("calendar.txt") as f:
+                calendar = pd.read_csv(f, dtype=str)
+        for reference_date, label in [
+            (config.REFERENCE_WEEKDAY, "REFERENCE_WEEKDAY"),
+            (config.REFERENCE_WEEKEND_DAY, "REFERENCE_WEEKEND_DAY"),
+        ]:
+            date_int = int(reference_date.strftime("%Y%m%d"))
+            in_range = (
+                (calendar["start_date"].astype(int) <= date_int)
+                & (calendar["end_date"].astype(int) >= date_int)
+            )
+            if not in_range.any():
+                raise ValueError(
+                    f"{label} ({reference_date}) is outside {gtfs_path.name}'s "
+                    f"calendar.txt validity window (min start_date="
+                    f"{calendar['start_date'].min()}, max end_date="
+                    f"{calendar['end_date'].max()}). Update config.REFERENCE_WEEKDAY/"
+                    f"REFERENCE_WEEKEND_DAY to dates within every downloaded feed's "
+                    f"validity window before running the full pipeline."
+                )
+```
+
+Run it and fix `pipeline/config.py`'s reference dates if it raises:
+```bash
+python -c "
+from pipeline import network_acquisition
+network_acquisition.validate_reference_dates()
+print('Reference dates valid across all feeds.')
+"
+```
+If this raises, pick new `REFERENCE_WEEKDAY`/`REFERENCE_WEEKEND_DAY` values in `pipeline/config.py` that fall within every feed's window (re-run the check until it passes) before proceeding to Step 2.
+
+- [ ] **Step 2: Write `run_pipeline.py`**
 
 ```python
 """End-to-end orchestration: run once after Tasks 1-11 are all committed."""
@@ -1534,6 +1590,7 @@ from pipeline import (
     demographics,
     facilities,
     geography,
+    network_acquisition,
     offsets,
     travel_time,
 )
@@ -1542,6 +1599,8 @@ load_dotenv()
 
 
 def main():
+    network_acquisition.validate_reference_dates()
+
     print("Loading geography...")
     tracts = geography.load_census_tracts()
     ntas = geography.load_nta_boundaries()
@@ -1574,10 +1633,19 @@ def main():
     )
 
     print("Loading and filtering athletic facilities...")
+    # Task 9's real smoke-run found two real bugs preparing facility data for
+    # r5py: (1) the shapefile's `gispropnum` identifies the parent park/property,
+    # not the individual facility, so it is NOT unique per row (r5py requires
+    # unique destination ids) -- the GeoDataFrame's own row index is unique and
+    # used instead; (2) facility geometries are Polygon/MultiPolygon (court/field
+    # footprints), but r5py requires Point geometry for origins and destinations
+    # -- converted via representative_point(), mirroring the tract-origin pattern
+    # above.
     active_facilities = facilities.load_active_facilities()
     facilities_by_sport_type = {
         sport: facilities.facilities_for_sport_type(active_facilities, sport).assign(
-            id=lambda df: df["gispropnum"]
+            id=lambda df: df.index.astype(str),
+            geometry=lambda df: df.geometry.representative_point(),
         )
         for sport in config.SPORT_TYPE_COLUMNS
     }
@@ -1606,14 +1674,16 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Run the full pipeline against real NYC data**
+- [ ] **Step 3: Run the full pipeline against real NYC data**
 
 ```bash
 python run_pipeline.py
 ```
-Expected: runs to completion without exceptions (this is a long-running step — full 2,325 tracts × 23 sport types × 6 windows; if runtime is impractically long, consider running per-sport-type batches and checkpointing intermediate `tract_times` results to disk before aggregation, rather than holding the whole computation in one process).
+Expected: runs to completion without exceptions (this is a long-running step — full 2,325 tracts × 23 sport types × 6 windows; if runtime is impractically long, consider running per-sport-type batches and checkpointing intermediate `tract_times` results to disk before aggregation, rather than holding the whole computation in one process). If `validate_reference_dates()` raises here, go back to Step 1 and fix the config dates first.
 
-- [ ] **Step 3: Sanity-check the output**
+Operational note (found during Task 9's real smoke-run): r5py caches the built OSM graph on disk outside this repo (e.g. `%LOCALAPPDATA%\r5py` on Windows). If this run is ever killed partway through building the transport network (crash, OOM, manual interrupt), that cache file can be left corrupted and r5py will not self-heal — the next attempt will fail with an error like `Wrong index checksum, store was not closed properly and could be corrupted`. If that happens, locate and delete the corrupted `.mapdb`/`.mapdb.p` file(s) in r5py's cache directory before retrying.
+
+- [ ] **Step 4: Sanity-check the output**
 
 ```bash
 python -c "
@@ -1633,10 +1703,10 @@ print('Non-null travel-time rate (basketball, weekday morning):',
 ```
 Expected: no assertion errors; a printed non-null rate close to 1.0 (a handful of transit-desert NTAs may legitimately be `NaN` if unreachable within `max_time`).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add run_pipeline.py
+git add run_pipeline.py pipeline/network_acquisition.py pipeline/config.py
 git commit -m "feat: add end-to-end pipeline orchestration script"
 ```
 
