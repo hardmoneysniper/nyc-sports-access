@@ -80,6 +80,11 @@ GTFS_URLS = {
     "ferry": "http://nycferry.connexionz.net/rtt/public/resource/gtfs.zip",
 }
 
+# Stable Geofabrik perma-alias that 302-redirects to the current dated
+# snapshot. Confirmed live/working when this was downloaded for real (see
+# docs/superpowers/plans/2026-08-29-transit-accessibility-data-pipeline.md).
+OSM_EXTRACT_URL = "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf"
+
 CRS_GEOGRAPHIC = "EPSG:4326"   # WGS84, required by r5py
 CRS_PROJECTED = "EPSG:2263"    # NY State Plane ft, matches source shapefiles
 

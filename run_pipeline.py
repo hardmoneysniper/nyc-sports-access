@@ -19,6 +19,7 @@ load_dotenv()
 
 
 def main():
+    network_acquisition.validate_network_files_exist()
     network_acquisition.validate_reference_dates()
 
     print("Loading geography...")

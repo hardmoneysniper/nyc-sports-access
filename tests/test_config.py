@@ -50,3 +50,9 @@ def test_gtfs_urls_present_for_required_agencies():
         "ferry",
     }
     assert required == set(config.GTFS_URLS)
+
+
+def test_osm_extract_url_is_geofabrik_new_york_perma_alias():
+    assert config.OSM_EXTRACT_URL == (
+        "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf"
+    )
