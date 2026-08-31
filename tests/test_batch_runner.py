@@ -151,3 +151,28 @@ def test_read_all_checkpoints_concatenates_in_sport_type_order(tmp_path):
 
     assert list(result.columns) == ["GEOID", "sport_type", "window_name", "travel_time_minutes"]
     assert list(result["sport_type"]) == ["basketball", "basketball", "tennis", "tennis"]
+
+
+def test_read_all_checkpoints_preserves_geoid_as_string_for_real_looking_ids(tmp_path):
+    # Real NYC GEOIDs are all-digit strings (e.g. "36061000100"). Without an
+    # explicit dtype, pd.read_csv infers int64 for an all-digit column,
+    # breaking downstream merges against tract_to_nta (which stays string) --
+    # this only reproduces with numeric-looking ids, not the "T1"/"T2"
+    # fixtures used elsewhere in this file.
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    real_geoid_result = pd.DataFrame(
+        [{
+            "GEOID": "36061000100",
+            "sport_type": "tennis",
+            "window_name": "weekday_morning",
+            "travel_time_minutes": 12.5,
+        }]
+    )
+    real_geoid_result.to_csv(checkpoint_dir / "tennis.csv", index=False)
+
+    result = batch_runner.read_all_checkpoints(["tennis"], checkpoint_dir)
+
+    assert pd.api.types.is_string_dtype(result["GEOID"])
+    assert not pd.api.types.is_integer_dtype(result["GEOID"])
+    assert result["GEOID"].iloc[0] == "36061000100"

@@ -55,7 +55,10 @@ def write_checkpoint_atomic(
 
 def read_all_checkpoints(sport_types=None, checkpoint_dir: Path | None = None) -> pd.DataFrame:
     sport_types = sport_types or list(config.SPORT_TYPE_COLUMNS)
-    frames = [pd.read_csv(checkpoint_path(sport_type, checkpoint_dir)) for sport_type in sport_types]
+    frames = [
+        pd.read_csv(checkpoint_path(sport_type, checkpoint_dir), dtype={"GEOID": str})
+        for sport_type in sport_types
+    ]
     return pd.concat(frames, ignore_index=True)[CHECKPOINT_COLUMNS]
 
 
