@@ -72,13 +72,11 @@ Out of scope for this phase (not requested): language/LEP tables, income/poverty
     - Bus, per company: `http://web.mta.info/developers/data/nyct/bus/google_transit_{manhattan,brooklyn,bronx,queens,staten_island}.zip`
     - MTA Bus Company: `http://web.mta.info/developers/data/busco/google_transit.zip`
     - NYC Ferry: `http://nycferry.connexionz.net/rtt/public/resource/gtfs.zip`
-- Departure time / time-of-week windows: travel time is computed separately for **6 windows**, taking the median travel time across departures within each window, per tract→facility-type pair. This produces 6 parallel time values per (tract, facility-type-category) combination rather than a single number:
+- Departure time / time-of-week windows: travel time is computed separately for **4 windows** (reduced from an original 6 to cut full-run compute time; covers peak/off-peak × weekday/weekend), taking the median travel time across departures within each window, per tract→facility-type pair:
   - Weekday morning: 7:00–9:00am
   - Weekday noon: 11:00am–1:00pm
-  - Weekday evening: 5:00–7:00pm
   - Weekend morning: 9:00–11:00am
   - Weekend noon: 11:00am–1:00pm
-  - Weekend evening: 5:00–7:00pm
   - A representative non-holiday weekday and weekend day are chosen from within the GTFS feeds' calendar validity window during implementation.
 - Origin point per tract: Shapely "point on surface" (guaranteed to fall inside the polygon), not a naive arithmetic centroid, to avoid landing outside concave/oddly-shaped tracts.
 - Intra-tract walking offset: take the tract's axis-aligned bounding box (4 corners), compute the distance from each corner to the origin point, average the 4 distances, halve the result, and convert to time at 3.0 mph (4.8 km/h). This flat offset is added to every OD travel time computed from that tract, approximating the extra walk for a resident who isn't standing exactly at the origin point.

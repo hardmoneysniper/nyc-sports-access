@@ -23,14 +23,12 @@ def test_sport_type_columns_excludes_non_sport_attributes():
     assert len(config.SPORT_TYPE_COLUMNS) == 23
 
 
-def test_time_windows_has_six_entries_with_start_and_duration():
+def test_time_windows_has_four_entries_with_start_and_duration():
     assert set(config.TIME_WINDOWS) == {
         "weekday_morning",
         "weekday_noon",
-        "weekday_evening",
         "weekend_morning",
         "weekend_noon",
-        "weekend_evening",
     }
     morning = config.TIME_WINDOWS["weekday_morning"]
     assert morning["start_time"] == datetime.time(7, 0)

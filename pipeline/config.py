@@ -49,20 +49,12 @@ TIME_WINDOWS = {
         "date": REFERENCE_WEEKDAY, "start_time": datetime.time(11, 0),
         "duration": datetime.timedelta(hours=2), "is_weekend": False,
     },
-    "weekday_evening": {
-        "date": REFERENCE_WEEKDAY, "start_time": datetime.time(17, 0),
-        "duration": datetime.timedelta(hours=2), "is_weekend": False,
-    },
     "weekend_morning": {
         "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(9, 0),
         "duration": datetime.timedelta(hours=2), "is_weekend": True,
     },
     "weekend_noon": {
         "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(11, 0),
-        "duration": datetime.timedelta(hours=2), "is_weekend": True,
-    },
-    "weekend_evening": {
-        "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(17, 0),
         "duration": datetime.timedelta(hours=2), "is_weekend": True,
     },
 }
