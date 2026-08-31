@@ -18,17 +18,18 @@ NYC_COUNTY_FIPS = {
 CENSUS_ACS_YEAR = 2024  # 2020-2024 ACS 5-year estimates
 
 # The Athletic Facilities shapefile has ~25 boolean columns; only these 23
-# represent an actual sport/game. `accessible` and `wheelchair` are
-# accessibility attributes, `nonregulat`/`regulation` describe field size,
-# not what's played there.
+# are native sport/game flags. `accessible` and `wheelchair` are
+# accessibility attributes, not sport types.
 #
-# `soccer` is a 24th entry not present as a native boolean column anywhere in
-# the shapefile's schema -- unlike every other primary_sp category, which has
-# at least one matching boolean column, soccer (primary_sp == "SCR", the 5th
-# most common primary sport, 298 active facilities, 55% of which have zero
-# other boolean flags set) has none. `pipeline.facilities.load_active_facilities`
-# synthesizes a `soccer` column from `primary_sp` so it can be treated like
-# any other sport type.
+# `soccer` is a 24th entry with no native boolean column in the shapefile's
+# schema. Per project owner domain knowledge, `regulation`/`nonregulat`
+# (nominally generic field-size flags) specifically indicate a field that
+# can host soccer when either is true (370 active facilities, verified) --
+# primary_sp == "SCR" / system-text matching were considered and rejected as
+# the basis for this (they undercount at 298-316 depending on method).
+# `pipeline.facilities.load_active_facilities` synthesizes a `soccer` column
+# from `regulation | nonregulat` so it can be treated like any other sport
+# type.
 SPORT_TYPE_COLUMNS = [
     "adult_base", "adult_foot", "adult_soft", "basketball", "bocce",
     "cricket", "flagfootba", "frisbee", "handball", "hockey", "kickball",

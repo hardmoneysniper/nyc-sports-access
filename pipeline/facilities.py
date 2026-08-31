@@ -14,10 +14,13 @@ def load_active_facilities() -> gpd.GeoDataFrame:
     active = facilities[facilities["featuresta"] == "Active"].copy()
     # Soccer has no boolean flag anywhere in this shapefile's schema (unlike
     # every other primary_sp category, which has at least one corresponding
-    # boolean column) -- confirmed by checking every column name against
-    # every primary_sp code. Synthesize one from the categorical field so
-    # soccer can be treated like any other sport type.
-    active["soccer"] = active["primary_sp"] == "SCR"
+    # boolean column). Per project owner domain knowledge, a facility's
+    # `regulation`/`nonregulat` flags (generic field-size attributes for
+    # every sport) specifically indicate a field that can host soccer when
+    # either is set -- primary_sp/system text matching were considered and
+    # explicitly rejected as the basis for this (they undercount: 298-316
+    # depending on method, vs. 370 via regulation/nonregulat).
+    active["soccer"] = active["regulation"] | active["nonregulat"]
     return active.to_crs(config.CRS_GEOGRAPHIC)
 
 
