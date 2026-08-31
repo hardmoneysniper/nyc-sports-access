@@ -54,3 +54,22 @@ def test_osm_extract_url_is_geofabrik_new_york_perma_alias():
     assert config.OSM_EXTRACT_URL == (
         "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf"
     )
+
+
+def test_sport_type_groups_cover_every_sport_type_column_exactly_once():
+    all_grouped_columns = [
+        column for columns in config.SPORT_TYPE_GROUPS.values() for column in columns
+    ]
+    # No omissions, no duplicates across groups.
+    assert sorted(all_grouped_columns) == sorted(config.SPORT_TYPE_COLUMNS)
+    assert len(all_grouped_columns) == len(set(all_grouped_columns))
+
+
+def test_sport_type_groups_known_variant_families():
+    assert config.SPORT_TYPE_GROUPS["baseball"] == [
+        "adult_base", "ll_baseb_1", "ll_baseb_2", "t_ball",
+    ]
+    assert config.SPORT_TYPE_GROUPS["softball"] == ["adult_soft", "ll_softbal"]
+    assert config.SPORT_TYPE_GROUPS["football"] == [
+        "adult_foot", "flagfootba", "youth_foot",
+    ]

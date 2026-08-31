@@ -29,6 +29,39 @@ SPORT_TYPE_COLUMNS = [
     "youth_foot",
 ]
 
+# Not used until the dashboard design phase (per project owner instruction,
+# 2026-08-31) -- defined now so the mapping exists alongside the columns it
+# describes, but no pipeline or output code reads this yet.
+#
+# Groups sub-type columns (e.g. adult/Little-League/tee-ball baseball
+# variants) under one display category, so a future dashboard filter can
+# treat them as a single "sport type" -- the nearest facility for a group is
+# just min() across its member columns' precomputed travel times, no
+# recomputation needed. Every SPORT_TYPE_COLUMNS entry appears in exactly one
+# group; sports with no naming variant in this dataset are single-item
+# groups. `regulation`/`nonregulat` are field-size attributes, not sport
+# variants, and are not part of this mapping (already excluded from
+# SPORT_TYPE_COLUMNS entirely).
+SPORT_TYPE_GROUPS = {
+    "baseball": ["adult_base", "ll_baseb_1", "ll_baseb_2", "t_ball"],
+    "softball": ["adult_soft", "ll_softbal"],
+    "football": ["adult_foot", "flagfootba", "youth_foot"],
+    "basketball": ["basketball"],
+    "bocce": ["bocce"],
+    "cricket": ["cricket"],
+    "frisbee": ["frisbee"],
+    "handball": ["handball"],
+    "hockey": ["hockey"],
+    "kickball": ["kickball"],
+    "lacrosse": ["lacrosse"],
+    "netball": ["netball"],
+    "pickleball": ["pickleball"],
+    "rugby": ["rugby"],
+    "tennis": ["tennis"],
+    "track_and_field": ["track_and_"],
+    "volleyball": ["volleyball"],
+}
+
 # Reference dates: must fall within the downloaded GTFS feeds' calendar
 # validity window. Values below were re-validated in Task 12 Step 1 against
 # the actual calendar.txt of all freshly re-downloaded feeds (subway, ferry,
