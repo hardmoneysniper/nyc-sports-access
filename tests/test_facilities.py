@@ -28,3 +28,15 @@ def test_facilities_for_sport_type_filters_boolean_column():
     basketball_facilities = facilities.facilities_for_sport_type(active_only, "basketball")
     assert len(basketball_facilities) == 1
     assert basketball_facilities.iloc[0].geometry == Point(0, 0)
+
+
+def test_load_active_facilities_synthesizes_soccer_from_primary_sp():
+    # Soccer has no native boolean column anywhere in the shapefile's schema
+    # (unlike every other primary_sp category) -- load_active_facilities
+    # synthesizes one from primary_sp == "SCR".
+    active = facilities.load_active_facilities()
+    assert "soccer" in active.columns
+    assert (active["soccer"] == (active["primary_sp"] == "SCR")).all()
+    soccer_facilities = facilities.facilities_for_sport_type(active, "soccer")
+    assert len(soccer_facilities) > 0
+    assert (soccer_facilities["primary_sp"] == "SCR").all()

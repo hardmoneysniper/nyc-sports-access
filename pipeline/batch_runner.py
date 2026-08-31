@@ -1,6 +1,6 @@
 """Checkpointed per-sport-type driver for travel_time.compute_nearest_facility_times.
 
-The full computation (23 sport types x 4 windows x 2,325 tracts) is a very
+The full computation (24 sport types x 4 windows x 2,325 tracts) is a very
 long-running batch job. Rather than one monolithic call that must be
 restarted from scratch after any crash/power loss, this module drives the
 computation one sport type at a time and writes an atomic checkpoint file

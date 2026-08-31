@@ -21,12 +21,20 @@ CENSUS_ACS_YEAR = 2024  # 2020-2024 ACS 5-year estimates
 # represent an actual sport/game. `accessible` and `wheelchair` are
 # accessibility attributes, `nonregulat`/`regulation` describe field size,
 # not what's played there.
+#
+# `soccer` is a 24th entry not present as a native boolean column anywhere in
+# the shapefile's schema -- unlike every other primary_sp category, which has
+# at least one matching boolean column, soccer (primary_sp == "SCR", the 5th
+# most common primary sport, 298 active facilities, 55% of which have zero
+# other boolean flags set) has none. `pipeline.facilities.load_active_facilities`
+# synthesizes a `soccer` column from `primary_sp` so it can be treated like
+# any other sport type.
 SPORT_TYPE_COLUMNS = [
     "adult_base", "adult_foot", "adult_soft", "basketball", "bocce",
     "cricket", "flagfootba", "frisbee", "handball", "hockey", "kickball",
     "lacrosse", "ll_baseb_1", "ll_baseb_2", "ll_softbal", "netball",
-    "pickleball", "rugby", "tennis", "track_and_", "t_ball", "volleyball",
-    "youth_foot",
+    "pickleball", "rugby", "soccer", "tennis", "track_and_", "t_ball",
+    "volleyball", "youth_foot",
 ]
 
 # Not used until the dashboard design phase (per project owner instruction,
@@ -57,6 +65,7 @@ SPORT_TYPE_GROUPS = {
     "netball": ["netball"],
     "pickleball": ["pickleball"],
     "rugby": ["rugby"],
+    "soccer": ["soccer"],
     "tennis": ["tennis"],
     "track_and_field": ["track_and_"],
     "volleyball": ["volleyball"],

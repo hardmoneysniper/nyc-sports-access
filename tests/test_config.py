@@ -20,7 +20,11 @@ def test_sport_type_columns_excludes_non_sport_attributes():
     excluded = {"accessible", "wheelchair", "nonregulat", "regulation", "primary_sp", "featuresta"}
     assert excluded.isdisjoint(config.SPORT_TYPE_COLUMNS)
     assert "basketball" in config.SPORT_TYPE_COLUMNS
-    assert len(config.SPORT_TYPE_COLUMNS) == 23
+    # 23 native boolean columns + synthetic "soccer" (derived from primary_sp
+    # == "SCR" in facilities.load_active_facilities, since soccer has no
+    # native boolean column anywhere in the shapefile's schema).
+    assert "soccer" in config.SPORT_TYPE_COLUMNS
+    assert len(config.SPORT_TYPE_COLUMNS) == 24
 
 
 def test_time_windows_has_four_entries_with_start_and_duration():
