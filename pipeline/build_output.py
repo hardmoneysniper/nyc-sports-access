@@ -4,6 +4,35 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
+# Day-of-week frequency weights for collapsing the 4 time-window columns into
+# one representative "time per trip" value per sport type: weekday windows
+# (5 days/week) get weight 5 each, weekend windows (2 days/week) get weight 2
+# each, split evenly between morning/noon within each day-type.
+WINDOW_WEIGHTS = {
+    "weekday_morning": 5,
+    "weekday_noon": 5,
+    "weekend_morning": 2,
+    "weekend_noon": 2,
+}
+
+
+def add_combined_time_columns(df: pd.DataFrame, sport_types: list[str]) -> pd.DataFrame:
+    """Add a `travel_time_{sport}` column per sport type: a weekday-frequency
+    -weighted average of that sport's 4 `travel_time_{sport}_{window}`
+    columns. If any of the 4 window values is NaN for a row, the combined
+    value is NaN too (not re-normalized over fewer inputs), so a partial
+    result never silently changes what's being measured.
+    """
+    df = df.copy()
+    total_weight = sum(WINDOW_WEIGHTS.values())
+    for sport in sport_types:
+        weighted_sum = sum(
+            df[f"travel_time_{sport}_{window}"] * weight
+            for window, weight in WINDOW_WEIGHTS.items()
+        )
+        df[f"travel_time_{sport}"] = weighted_sum / total_weight
+    return df
+
 
 def _pivot_wide(travel_times: pd.DataFrame, id_column: str) -> pd.DataFrame:
     travel_times = travel_times.copy()

@@ -80,3 +80,31 @@ def test_write_tract_output_includes_unreachable_tracts_with_nan(tmp_path):
     assert pd.isna(t2["travel_time_tennis_weekday_morning"]), \
         "T2 should have NaN for travel_time_tennis_weekday_morning"
     assert t2["NTA2020"] == "N1", "T2 should still have its NTA2020 mapping"
+
+
+def test_add_combined_time_columns_applies_weekday_weekend_weighting():
+    # weights: weekday_morning=5, weekday_noon=5, weekend_morning=2, weekend_noon=2
+    # combined = (5*10 + 5*20 + 2*30 + 2*40) / 14 = (50+100+60+80)/14 = 290/14
+    df = pd.DataFrame({
+        "GEOID": ["T1"],
+        "travel_time_basketball_weekday_morning": [10.0],
+        "travel_time_basketball_weekday_noon": [20.0],
+        "travel_time_basketball_weekend_morning": [30.0],
+        "travel_time_basketball_weekend_noon": [40.0],
+    })
+    result = build_output.add_combined_time_columns(df, ["basketball"])
+    assert result["travel_time_basketball"].iloc[0] == pytest.approx(290 / 14)
+
+
+def test_add_combined_time_columns_propagates_nan_from_any_missing_window():
+    # If any of the 4 windows is NaN, the combined value must be NaN too --
+    # not silently re-normalized over the 3 remaining windows.
+    df = pd.DataFrame({
+        "GEOID": ["T1"],
+        "travel_time_basketball_weekday_morning": [10.0],
+        "travel_time_basketball_weekday_noon": [20.0],
+        "travel_time_basketball_weekend_morning": [float("nan")],
+        "travel_time_basketball_weekend_noon": [40.0],
+    })
+    result = build_output.add_combined_time_columns(df, ["basketball"])
+    assert pd.isna(result["travel_time_basketball"].iloc[0])
