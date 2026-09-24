@@ -21,13 +21,16 @@ export const DEMOGRAPHIC_CATEGORIES = [
 // aggregation (min() of travel time across a group's member columns) when
 // it writes travel_time.geojson. Per project owner instruction,
 // 2026-09-27.
+// Ordered alphabetically by label (not by value/group) -- per project
+// owner instruction, 2026-09-27.
 export const SPORT_TYPES = [
   { value: "adult_baseball", label: "Baseball (Adult)" },
-  { value: "adult_football", label: "Football (Adult)" },
-  { value: "adult_softball", label: "Softball (Adult)" },
+  { value: "youth_baseball", label: "Baseball (Youth)" },
   { value: "basketball", label: "Basketball" },
   { value: "bocce", label: "Bocce" },
   { value: "cricket", label: "Cricket" },
+  { value: "adult_football", label: "Football (Adult)" },
+  { value: "youth_football", label: "Football (Youth)" },
   { value: "frisbee", label: "Frisbee" },
   { value: "handball", label: "Handball" },
   { value: "hockey", label: "Hockey" },
@@ -37,12 +40,11 @@ export const SPORT_TYPES = [
   { value: "pickleball", label: "Pickleball" },
   { value: "rugby", label: "Rugby" },
   { value: "soccer", label: "Soccer" },
+  { value: "adult_softball", label: "Softball (Adult)" },
+  { value: "youth_softball", label: "Softball (Youth)" },
   { value: "tennis", label: "Tennis" },
   { value: "track_and_field", label: "Track and Field" },
   { value: "volleyball", label: "Volleyball" },
-  { value: "youth_baseball", label: "Baseball (Youth)" },
-  { value: "youth_football", label: "Football (Youth)" },
-  { value: "youth_softball", label: "Softball (Youth)" },
 ] as const;
 
 type DemographicCategory = (typeof DEMOGRAPHIC_CATEGORIES)[number]["value"];
