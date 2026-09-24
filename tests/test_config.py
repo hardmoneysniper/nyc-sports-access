@@ -60,27 +60,27 @@ def test_osm_extract_url_is_geofabrik_new_york_perma_alias():
     )
 
 
-def test_sport_type_groups_cover_every_sport_type_column_at_least_once():
+def test_sport_type_groups_cover_every_sport_type_column_exactly_once():
     all_grouped_columns = [
         column for columns in config.SPORT_TYPE_GROUPS.values() for column in columns
     ]
-    # No omissions. flagfootba is the one deliberate duplicate (it appears in
-    # both football_adult and football_youth, since flag football is played
-    # by both age groups) -- every other column appears exactly once.
-    assert sorted(set(all_grouped_columns)) == sorted(config.SPORT_TYPE_COLUMNS)
-    duplicates = [c for c in set(all_grouped_columns) if all_grouped_columns.count(c) > 1]
-    assert duplicates == ["flagfootba"]
+    # No omissions and no overlaps -- every raw sport-type column appears in
+    # exactly one display group.
+    assert sorted(all_grouped_columns) == sorted(config.SPORT_TYPE_COLUMNS)
+    assert len(all_grouped_columns) == len(set(all_grouped_columns))
 
 
 def test_sport_type_groups_known_variant_families():
-    # Baseball and football are split into adult/youth groups (dashboard
-    # adds a youth/adult selector); softball keeps its single combined group
-    # despite having the same adult/youth column split, since it wasn't
-    # called out for separation.
-    assert config.SPORT_TYPE_GROUPS["baseball_adult"] == ["adult_base"]
-    assert config.SPORT_TYPE_GROUPS["baseball_youth"] == [
+    # Youth baseball's 3 variants (2 Little League divisions + tee-ball)
+    # collapse into one group; adult football's 2 variants (tackle + flag)
+    # collapse into one group. Softball and non-flag youth football stay
+    # split by age rather than merging. Per project owner instruction,
+    # 2026-09-27.
+    assert config.SPORT_TYPE_GROUPS["adult_baseball"] == ["adult_base"]
+    assert config.SPORT_TYPE_GROUPS["youth_baseball"] == [
         "ll_baseb_1", "ll_baseb_2", "t_ball",
     ]
-    assert config.SPORT_TYPE_GROUPS["softball"] == ["adult_soft", "ll_softbal"]
-    assert config.SPORT_TYPE_GROUPS["football_adult"] == ["adult_foot", "flagfootba"]
-    assert config.SPORT_TYPE_GROUPS["football_youth"] == ["flagfootba", "youth_foot"]
+    assert config.SPORT_TYPE_GROUPS["adult_softball"] == ["adult_soft"]
+    assert config.SPORT_TYPE_GROUPS["youth_softball"] == ["ll_softbal"]
+    assert config.SPORT_TYPE_GROUPS["adult_football"] == ["adult_foot", "flagfootba"]
+    assert config.SPORT_TYPE_GROUPS["youth_football"] == ["youth_foot"]

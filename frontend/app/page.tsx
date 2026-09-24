@@ -185,7 +185,7 @@ export default function LandingPage() {
                 color: "#111",
               }}
             >
-              Explore access to sports facilities across New York City and see how it varies across neighborhoods and communities.
+              Explore access to public sports facilities across New York City and see how it varies across neighborhoods and communities.
             </p>
           </div>
         </div>

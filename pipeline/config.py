@@ -38,43 +38,31 @@ SPORT_TYPE_COLUMNS = [
     "volleyball", "youth_foot",
 ]
 
-# Not used until the dashboard design phase (per project owner instruction,
-# 2026-08-31) -- defined now so the mapping exists alongside the columns it
-# describes, but no pipeline or output code reads this yet.
+# Groups sub-type columns under one display category for the dashboard's
+# sport-type selector -- the nearest facility for a group is just min()
+# across its member columns' precomputed travel times (each column already
+# means "distance to nearest facility of that one type," so the minimum
+# over a set of columns is exactly "distance to nearest facility of any of
+# these types"), no recomputation needed. Used by
+# export_dashboard_data.py's export_travel_time().
 #
-# Groups sub-type columns (e.g. adult/Little-League/tee-ball baseball
-# variants) under one display category, so a future dashboard filter can
-# treat them as a single "sport type" -- the nearest facility for a group is
-# just min() across its member columns' precomputed travel times, no
-# recomputation needed.
-#
-# The dashboard also adds an independent youth/adult selector (per project
-# owner instruction, 2026-09-14). Baseball and football are the only sports
-# split into age-specific groups here (`baseball_adult`/`baseball_youth`,
-# `football_adult`/`football_youth`), since they're the ones the project
-# owner called out as having a real adult/youth distinction. Flag football
-# (`flagfootba`) is not youth-exclusive -- it's played by both adult and
-# youth leagues -- so it deliberately appears in *both* `football_adult` and
-# `football_youth`, the one exception to "every column in exactly one
-# group."
-#
-# Every other group -- including softball, which has the same adult
-# (`adult_soft`) / youth (`ll_softbal`) column split as baseball but was not
-# called out for separation -- carries no adult/youth distinction here: it
-# is shown under *either* selector state, the same way flagfootba is shown
-# under both football groups. A future dashboard's age filter should select
-# a group when the chosen age matches the group's suffix, or unconditionally
-# when the group has no age suffix at all.
+# Every raw column appears in EXACTLY ONE group -- no overlaps. Per project
+# owner instruction, 2026-09-27: youth baseball's 3 variants (regular
+# Little League x2 plus tee-ball) collapse into one "Youth Baseball"
+# group; adult football's 2 variants (tackle plus flag) collapse into one
+# "Adult Football" group. Everything else is a 1:1 rename -- including
+# softball and non-flag youth football, which stay split by age rather
+# than merging (an earlier draft of this mapping merged softball's
+# adult/youth columns and double-counted flagfootba across two football
+# groups; superseded by this simpler, non-overlapping version).
 #
 # `regulation`/`nonregulat` are field-size attributes, not sport variants,
 # and are not part of this mapping (already excluded from SPORT_TYPE_COLUMNS
 # entirely).
 SPORT_TYPE_GROUPS = {
-    "baseball_adult": ["adult_base"],
-    "baseball_youth": ["ll_baseb_1", "ll_baseb_2", "t_ball"],
-    "softball": ["adult_soft", "ll_softbal"],
-    "football_adult": ["adult_foot", "flagfootba"],
-    "football_youth": ["flagfootba", "youth_foot"],
+    "adult_baseball": ["adult_base"],
+    "adult_football": ["adult_foot", "flagfootba"],
+    "adult_softball": ["adult_soft"],
     "basketball": ["basketball"],
     "bocce": ["bocce"],
     "cricket": ["cricket"],
@@ -90,6 +78,9 @@ SPORT_TYPE_GROUPS = {
     "tennis": ["tennis"],
     "track_and_field": ["track_and_"],
     "volleyball": ["volleyball"],
+    "youth_baseball": ["ll_baseb_1", "ll_baseb_2", "t_ball"],
+    "youth_football": ["youth_foot"],
+    "youth_softball": ["ll_softbal"],
 }
 
 # Reference dates: must fall within the downloaded GTFS feeds' calendar

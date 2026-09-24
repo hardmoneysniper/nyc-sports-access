@@ -34,11 +34,12 @@ function formatTooltipLines(
     const categoryLine = `${categoryLabel}: ${typeof categoryValue === "number" ? `${categoryValue.toFixed(1)}%` : "No data"}`;
     return [name, populationLine, categoryLine];
   }
+  const sportLabel = (SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType).toLowerCase();
   const travelTime = properties[`travel_time_${sportType}`];
   const travelTimeLine =
     typeof travelTime === "number"
-      ? `Travel time to nearest ${sportType} facility: ${travelTime.toFixed(1)} min`
-      : `Travel time to nearest ${sportType} facility: No data`;
+      ? `Travel time to nearest ${sportLabel} facility: ${travelTime.toFixed(1)} min`
+      : `Travel time to nearest ${sportLabel} facility: No data`;
   return [name, travelTimeLine];
 }
 
@@ -304,8 +305,8 @@ export default function ExplorePage() {
             <label htmlFor="sport-select">Sport facility type: </label>
             <select id="sport-select" value={sportType} onChange={(e) => setSportType(e.target.value as typeof sportType)}>
               {SPORT_TYPES.map((sport) => (
-                <option key={sport} value={sport}>
-                  {sport}
+                <option key={sport.value} value={sport.value}>
+                  {sport.label}
                 </option>
               ))}
             </select>

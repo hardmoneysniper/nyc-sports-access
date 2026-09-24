@@ -14,17 +14,39 @@ export const DEMOGRAPHIC_CATEGORIES = [
   { value: "pct_immigrant", label: "Immigrant / foreign-born" },
 ] as const;
 
-// Matches pipeline.config.SPORT_TYPE_COLUMNS, in the same order.
+// Matches pipeline.config.SPORT_TYPE_GROUPS' keys -- display-level
+// categories, not the 24 raw shapefile sport-type columns. Some of these
+// (youth_baseball, adult_football) are an aggregate of multiple raw
+// columns; export_dashboard_data.py's export_travel_time() does the
+// aggregation (min() of travel time across a group's member columns) when
+// it writes travel_time.geojson. Per project owner instruction,
+// 2026-09-27.
 export const SPORT_TYPES = [
-  "adult_base", "adult_foot", "adult_soft", "basketball", "bocce",
-  "cricket", "flagfootba", "frisbee", "handball", "hockey", "kickball",
-  "lacrosse", "ll_baseb_1", "ll_baseb_2", "ll_softbal", "netball",
-  "pickleball", "rugby", "soccer", "tennis", "track_and_", "t_ball",
-  "volleyball", "youth_foot",
+  { value: "adult_baseball", label: "Adult Baseball" },
+  { value: "adult_football", label: "Adult Football" },
+  { value: "adult_softball", label: "Adult Softball" },
+  { value: "basketball", label: "Basketball" },
+  { value: "bocce", label: "Bocce" },
+  { value: "cricket", label: "Cricket" },
+  { value: "frisbee", label: "Frisbee" },
+  { value: "handball", label: "Handball" },
+  { value: "hockey", label: "Hockey" },
+  { value: "kickball", label: "Kickball" },
+  { value: "lacrosse", label: "Lacrosse" },
+  { value: "netball", label: "Netball" },
+  { value: "pickleball", label: "Pickleball" },
+  { value: "rugby", label: "Rugby" },
+  { value: "soccer", label: "Soccer" },
+  { value: "tennis", label: "Tennis" },
+  { value: "track_and_field", label: "Track and Field" },
+  { value: "volleyball", label: "Volleyball" },
+  { value: "youth_baseball", label: "Youth Baseball" },
+  { value: "youth_football", label: "Youth Football" },
+  { value: "youth_softball", label: "Youth Softball" },
 ] as const;
 
 type DemographicCategory = (typeof DEMOGRAPHIC_CATEGORIES)[number]["value"];
-type SportType = (typeof SPORT_TYPES)[number];
+type SportType = (typeof SPORT_TYPES)[number]["value"];
 
 type SelectionContextValue = {
   demographicCategory: DemographicCategory;
@@ -56,7 +78,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
         setDemographicCategory(storedDemographic);
       }
       const storedSport = localStorage.getItem(STORAGE_KEY_SPORT) as SportType | null;
-      if (storedSport && SPORT_TYPES.includes(storedSport)) {
+      if (storedSport && SPORT_TYPES.some((s) => s.value === storedSport)) {
         setSportType(storedSport);
       }
     } catch {

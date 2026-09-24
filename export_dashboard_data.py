@@ -6,9 +6,12 @@ Writes to frontend/public/data/:
 
 - demographics.geojson: NTA boundaries + the 6 selectable pct_* demographic
   columns, from data/processed/nta_output.geojson.
-- travel_time.geojson: NTA boundaries + all 24 raw travel_time_{sport}
-  columns from data/processed/nta_output_combined_time.csv (the original
-  4-window data -- the 5pm evening-window data is NOT used for this file).
+- travel_time.geojson: NTA boundaries + the 21 display-level
+  travel_time_{group} columns (config.SPORT_TYPE_GROUPS -- e.g. youth
+  baseball's 3 raw variants collapse into one), derived from the 24 raw
+  travel_time_{sport} columns in data/processed/nta_output_combined_time.csv
+  (the original 4-window data -- the 5pm evening-window data is NOT used
+  for this file).
 - nta_boundaries.geojson: NTA2020 + geometry only, no other properties --
   the lightweight "faint backdrop of every NTA" layer used behind the
   NTA-clicked detail view (see NtaDetailView.tsx).
@@ -58,10 +61,25 @@ def export_travel_time():
     nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020", "NTAName", "geometry"]]
     times = pd.read_csv(config.PROCESSED_DIR / "nta_output_combined_time.csv")
     merged = nta.merge(times.drop(columns=["NTAName"]), on="NTA2020", how="left")
+
+    # Collapse the 24 raw sport-type columns into config.SPORT_TYPE_GROUPS'
+    # 21 display categories. Each raw column already means "travel time to
+    # the nearest facility of that one type," so min() across a group's
+    # member columns is exactly "travel time to the nearest facility of any
+    # of these types" -- no re-routing needed. min()'s default skipna=True
+    # is the right behavior here too: if only some member types have a
+    # reachable facility, the group's value is the best of what's
+    # available, not NaN. Per project owner instruction, 2026-09-27.
+    for group, members in config.SPORT_TYPE_GROUPS.items():
+        member_columns = [f"travel_time_{m}" for m in members]
+        merged[f"travel_time_{group}"] = merged[member_columns].min(axis=1)
+
+    group_columns = [f"travel_time_{g}" for g in config.SPORT_TYPE_GROUPS]
+    merged = merged[["NTA2020", "NTAName", "geometry"] + group_columns]
+
     output_path = OUTPUT_DIR / "travel_time.geojson"
     merged.to_file(output_path, driver="GeoJSON")
-    sport_columns = [c for c in times.columns if c.startswith("travel_time_")]
-    print(f"Wrote {output_path} ({len(merged)} NTAs, {len(sport_columns)} sport types)")
+    print(f"Wrote {output_path} ({len(merged)} NTAs, {len(group_columns)} sport types)")
 
 
 def export_nta_boundaries():
