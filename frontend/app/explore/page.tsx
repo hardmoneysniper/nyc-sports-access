@@ -285,7 +285,7 @@ export default function ExplorePage() {
         </label>
         {showDemographics && (
           <div>
-            <label htmlFor="category-select">Underserved population category: </label>
+            <label htmlFor="category-select">Demographic: </label>
             <select
               id="category-select"
               value={demographicCategory}
