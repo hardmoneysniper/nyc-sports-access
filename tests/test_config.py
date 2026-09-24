@@ -60,20 +60,27 @@ def test_osm_extract_url_is_geofabrik_new_york_perma_alias():
     )
 
 
-def test_sport_type_groups_cover_every_sport_type_column_exactly_once():
+def test_sport_type_groups_cover_every_sport_type_column_at_least_once():
     all_grouped_columns = [
         column for columns in config.SPORT_TYPE_GROUPS.values() for column in columns
     ]
-    # No omissions, no duplicates across groups.
-    assert sorted(all_grouped_columns) == sorted(config.SPORT_TYPE_COLUMNS)
-    assert len(all_grouped_columns) == len(set(all_grouped_columns))
+    # No omissions. flagfootba is the one deliberate duplicate (it appears in
+    # both football_adult and football_youth, since flag football is played
+    # by both age groups) -- every other column appears exactly once.
+    assert sorted(set(all_grouped_columns)) == sorted(config.SPORT_TYPE_COLUMNS)
+    duplicates = [c for c in set(all_grouped_columns) if all_grouped_columns.count(c) > 1]
+    assert duplicates == ["flagfootba"]
 
 
 def test_sport_type_groups_known_variant_families():
-    assert config.SPORT_TYPE_GROUPS["baseball"] == [
-        "adult_base", "ll_baseb_1", "ll_baseb_2", "t_ball",
+    # Baseball and football are split into adult/youth groups (dashboard
+    # adds a youth/adult selector); softball keeps its single combined group
+    # despite having the same adult/youth column split, since it wasn't
+    # called out for separation.
+    assert config.SPORT_TYPE_GROUPS["baseball_adult"] == ["adult_base"]
+    assert config.SPORT_TYPE_GROUPS["baseball_youth"] == [
+        "ll_baseb_1", "ll_baseb_2", "t_ball",
     ]
     assert config.SPORT_TYPE_GROUPS["softball"] == ["adult_soft", "ll_softbal"]
-    assert config.SPORT_TYPE_GROUPS["football"] == [
-        "adult_foot", "flagfootba", "youth_foot",
-    ]
+    assert config.SPORT_TYPE_GROUPS["football_adult"] == ["adult_foot", "flagfootba"]
+    assert config.SPORT_TYPE_GROUPS["football_youth"] == ["flagfootba", "youth_foot"]

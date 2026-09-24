@@ -114,6 +114,8 @@ def test_build_nta_demographics_sums_before_dividing():
     # White alone (non-Hispanic) summed = 400+900=1300, total summed=1000+3000=4000
     # non_white = 100 * (1 - 1300/4000) = 67.5
     # (average-of-percentages would give (60+70)/2 = 65.0 -- different)
+    # B03002 total summed = 1000+3000 = 4000
+    assert row["total_population"] == pytest.approx(4000)
     assert row["pct_non_white"] == pytest.approx(67.5)
     # Hispanic summed = 300+1200=1500, total=4000 -> 37.5
     # (average would give (30+40)/2 = 35.0 -- different)

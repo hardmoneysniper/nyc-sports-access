@@ -176,3 +176,28 @@ def test_read_all_checkpoints_preserves_geoid_as_string_for_real_looking_ids(tmp
     assert pd.api.types.is_string_dtype(result["GEOID"])
     assert not pd.api.types.is_integer_dtype(result["GEOID"])
     assert result["GEOID"].iloc[0] == "36061000100"
+
+
+def test_read_all_checkpoints_accepts_custom_columns(tmp_path):
+    # run_evening_windows.py's checkpoints carry a 5th column
+    # (nearest_facility_id, from travel_time.compute_nearest_facility_routes)
+    # that the 4-column CHECKPOINT_COLUMNS default would silently drop.
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    pd.DataFrame([{
+        "GEOID": "T1",
+        "sport_type": "tennis",
+        "window_name": "weekday_evening",
+        "nearest_facility_id": "42",
+        "travel_time_minutes": 12.5,
+    }]).to_csv(checkpoint_dir / "tennis.csv", index=False)
+
+    result = batch_runner.read_all_checkpoints(
+        ["tennis"], checkpoint_dir,
+        columns=["GEOID", "sport_type", "window_name", "nearest_facility_id", "travel_time_minutes"],
+    )
+
+    assert list(result.columns) == [
+        "GEOID", "sport_type", "window_name", "nearest_facility_id", "travel_time_minutes",
+    ]
+    assert result["nearest_facility_id"].iloc[0] == "42"

@@ -141,6 +141,7 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     # actually the correct signal for "no population data for this NTA",
     # not a bug to hide.
     result = pd.DataFrame({
+        "total_population": b03002_total,
         "pct_non_white": 100 * (1 - white_alone / b03002_total),
         "pct_hispanic_or_latino": 100 * hispanic / b03002_total,
     }).reset_index()

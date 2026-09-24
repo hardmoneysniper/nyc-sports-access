@@ -1,0 +1,51 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Leftover exported data from the deferred Leaflet NTA-detail-view feature
+# (tract/route/facility drill-down) -- the current app only ever fetches
+# demographics.geojson and travel_time.geojson (confirmed via grep,
+# 2026-09-27). These total ~566MB and aren't used by anything live, so
+# they don't belong in the repo.
+/public/data/routes/
+/public/data/tracts/
+/public/data/facilities/
+/public/data/nta_boundaries.geojson

@@ -1,7 +1,10 @@
 .env
 .env.*
 !.env.example
-data/
+# Anchored to the repo root -- an unanchored "data/" also matched
+# frontend/public/data/, silently excluding the geojson files the deployed
+# app actually needs (caught before the first push, 2026-09-27).
+/data/
 *.pdf
 node_modules/
 __pycache__/
@@ -9,3 +12,6 @@ __pycache__/
 .venv/
 venv/
 .superpowers/
+.claude/
+*.log
+*.log.crash*

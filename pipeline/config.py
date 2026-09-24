@@ -46,15 +46,35 @@ SPORT_TYPE_COLUMNS = [
 # variants) under one display category, so a future dashboard filter can
 # treat them as a single "sport type" -- the nearest facility for a group is
 # just min() across its member columns' precomputed travel times, no
-# recomputation needed. Every SPORT_TYPE_COLUMNS entry appears in exactly one
-# group; sports with no naming variant in this dataset are single-item
-# groups. `regulation`/`nonregulat` are field-size attributes, not sport
-# variants, and are not part of this mapping (already excluded from
-# SPORT_TYPE_COLUMNS entirely).
+# recomputation needed.
+#
+# The dashboard also adds an independent youth/adult selector (per project
+# owner instruction, 2026-09-14). Baseball and football are the only sports
+# split into age-specific groups here (`baseball_adult`/`baseball_youth`,
+# `football_adult`/`football_youth`), since they're the ones the project
+# owner called out as having a real adult/youth distinction. Flag football
+# (`flagfootba`) is not youth-exclusive -- it's played by both adult and
+# youth leagues -- so it deliberately appears in *both* `football_adult` and
+# `football_youth`, the one exception to "every column in exactly one
+# group."
+#
+# Every other group -- including softball, which has the same adult
+# (`adult_soft`) / youth (`ll_softbal`) column split as baseball but was not
+# called out for separation -- carries no adult/youth distinction here: it
+# is shown under *either* selector state, the same way flagfootba is shown
+# under both football groups. A future dashboard's age filter should select
+# a group when the chosen age matches the group's suffix, or unconditionally
+# when the group has no age suffix at all.
+#
+# `regulation`/`nonregulat` are field-size attributes, not sport variants,
+# and are not part of this mapping (already excluded from SPORT_TYPE_COLUMNS
+# entirely).
 SPORT_TYPE_GROUPS = {
-    "baseball": ["adult_base", "ll_baseb_1", "ll_baseb_2", "t_ball"],
+    "baseball_adult": ["adult_base"],
+    "baseball_youth": ["ll_baseb_1", "ll_baseb_2", "t_ball"],
     "softball": ["adult_soft", "ll_softbal"],
-    "football": ["adult_foot", "flagfootba", "youth_foot"],
+    "football_adult": ["adult_foot", "flagfootba"],
+    "football_youth": ["flagfootba", "youth_foot"],
     "basketball": ["basketball"],
     "bocce": ["bocce"],
     "cricket": ["cricket"],
@@ -98,6 +118,27 @@ TIME_WINDOWS = {
     },
     "weekend_noon": {
         "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(11, 0),
+        "duration": datetime.timedelta(hours=2), "is_weekend": True,
+    },
+}
+
+# Added alongside (not replacing) the 4 windows above (per project owner
+# instruction, 2026-09-14): a weekday-5pm and a Saturday-5pm departure, for a
+# separate point-to-point routing pass that must NOT touch the travel times
+# already computed/checkpointed for the 4 windows above. Kept as a distinct
+# dict (rather than merged into TIME_WINDOWS) specifically so existing code
+# that iterates `config.TIME_WINDOWS` -- e.g. batch_runner, which checkpoints
+# per sport type covering every window in one file -- keeps operating on
+# exactly the 4 already-checkpointed windows unless a caller explicitly asks
+# for these too. Same 2-hour departure_time_window convention as above:
+# 5:00pm means a 5:00-7:00pm departure search window.
+EVENING_TIME_WINDOWS = {
+    "weekday_evening": {
+        "date": REFERENCE_WEEKDAY, "start_time": datetime.time(17, 0),
+        "duration": datetime.timedelta(hours=2), "is_weekend": False,
+    },
+    "weekend_evening": {
+        "date": REFERENCE_WEEKEND_DAY, "start_time": datetime.time(17, 0),
         "duration": datetime.timedelta(hours=2), "is_weekend": True,
     },
 }

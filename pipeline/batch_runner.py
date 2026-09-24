@@ -53,13 +53,32 @@ def write_checkpoint_atomic(
     return path
 
 
-def read_all_checkpoints(sport_types=None, checkpoint_dir: Path | None = None) -> pd.DataFrame:
+def read_all_checkpoints(
+    sport_types=None, checkpoint_dir: Path | None = None, columns: list[str] | None = None
+) -> pd.DataFrame:
+    # columns defaults to CHECKPOINT_COLUMNS (the 4-column
+    # GEOID/sport_type/window_name/travel_time_minutes shape every existing
+    # caller expects). Pass a wider list -- e.g. including
+    # "nearest_facility_id" -- to read back checkpoints written by a
+    # different compute_fn, such as travel_time.compute_nearest_facility_routes.
+    columns = columns or CHECKPOINT_COLUMNS
     sport_types = sport_types or list(config.SPORT_TYPE_COLUMNS)
+    # nearest_facility_id is a facility DataFrame's row index cast to string
+    # (see pipeline_setup.py) -- an all-digit id like "42" round-trips
+    # through CSV as int64 without this, the same trap already guarded
+    # against for GEOID above, and would silently break the id-based merge
+    # in pipeline/routes.py against facilities_by_sport_type's string `id`
+    # column. Naming a dtype key that isn't among this checkpoint's actual
+    # columns (e.g. "nearest_facility_id" when reading a 4-column checkpoint)
+    # is a no-op for pandas, not an error, so this is safe for both shapes.
     frames = [
-        pd.read_csv(checkpoint_path(sport_type, checkpoint_dir), dtype={"GEOID": str})
+        pd.read_csv(
+            checkpoint_path(sport_type, checkpoint_dir),
+            dtype={"GEOID": str, "nearest_facility_id": str},
+        )
         for sport_type in sport_types
     ]
-    return pd.concat(frames, ignore_index=True)[CHECKPOINT_COLUMNS]
+    return pd.concat(frames, ignore_index=True)[columns]
 
 
 def run_sport_types(
