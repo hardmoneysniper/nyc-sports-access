@@ -22,9 +22,9 @@ export const DEMOGRAPHIC_CATEGORIES = [
 // it writes travel_time.geojson. Per project owner instruction,
 // 2026-09-27.
 export const SPORT_TYPES = [
-  { value: "adult_baseball", label: "Adult Baseball" },
-  { value: "adult_football", label: "Adult Football" },
-  { value: "adult_softball", label: "Adult Softball" },
+  { value: "adult_baseball", label: "Baseball (Adult)" },
+  { value: "adult_football", label: "Football (Adult)" },
+  { value: "adult_softball", label: "Softball (Adult)" },
   { value: "basketball", label: "Basketball" },
   { value: "bocce", label: "Bocce" },
   { value: "cricket", label: "Cricket" },
@@ -40,9 +40,9 @@ export const SPORT_TYPES = [
   { value: "tennis", label: "Tennis" },
   { value: "track_and_field", label: "Track and Field" },
   { value: "volleyball", label: "Volleyball" },
-  { value: "youth_baseball", label: "Youth Baseball" },
-  { value: "youth_football", label: "Youth Football" },
-  { value: "youth_softball", label: "Youth Softball" },
+  { value: "youth_baseball", label: "Baseball (Youth)" },
+  { value: "youth_football", label: "Football (Youth)" },
+  { value: "youth_softball", label: "Softball (Youth)" },
 ] as const;
 
 type DemographicCategory = (typeof DEMOGRAPHIC_CATEGORIES)[number]["value"];
