@@ -314,22 +314,6 @@ export default function ExplorePage() {
         )}
       </div>
       <div style={{ height: "100%", display: "flex" }}>
-        {showDemographics && (
-          <div style={{ flex: 1, height: "100%", position: "relative" }}>
-            <InteractiveMap
-              slot="demographics"
-              geojsonUrl={withBasePath("/data/demographics.geojson")}
-              valueProperty={demographicCategory}
-              binEdges={PERCENT_BIN_EDGES}
-              onMapReady={handleMapReady}
-              onInitialViewReady={handleInitialViewReady}
-              onFeatureIdsReady={handleFeatureIdsReady}
-              onHover={handleHover}
-              onNtaClick={handleNtaClick}
-            />
-            {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
-          </div>
-        )}
         {showTravelTime && (
           <div style={{ flex: 1, height: "100%", position: "relative" }}>
             <InteractiveMap
@@ -344,6 +328,22 @@ export default function ExplorePage() {
               onNtaClick={handleNtaClick}
             />
             {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
+          </div>
+        )}
+        {showDemographics && (
+          <div style={{ flex: 1, height: "100%", position: "relative" }}>
+            <InteractiveMap
+              slot="demographics"
+              geojsonUrl={withBasePath("/data/demographics.geojson")}
+              valueProperty={demographicCategory}
+              binEdges={PERCENT_BIN_EDGES}
+              onMapReady={handleMapReady}
+              onInitialViewReady={handleInitialViewReady}
+              onFeatureIdsReady={handleFeatureIdsReady}
+              onHover={handleHover}
+              onNtaClick={handleNtaClick}
+            />
+            {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
           </div>
         )}
         {showBaseOnly && (
