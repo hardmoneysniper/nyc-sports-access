@@ -9,6 +9,7 @@ import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 import { withBasePath } from "@/lib/basePath";
 import type { SlotId, MapView, HoverInfo, ClickInfo } from "@/components/InteractiveMap";
+import MapPageSidebar from "@/components/MapPageSidebar";
 
 const InteractiveMap = dynamic(() => import("@/components/InteractiveMap"), { ssr: false });
 
@@ -288,7 +289,9 @@ export default function ExplorePage() {
   }, [valueProperty]);
 
   return (
-    <div style={{ position: "relative", height: "100vh", width: "100vw", overflow: "hidden" }}>
+    <div style={{ position: "relative", height: "100vh", width: "100vw", overflow: "hidden", display: "flex" }}>
+      <MapPageSidebar />
+      <div style={{ position: "relative", flex: 1, height: "100%" }}>
       <div
         style={{
           position: "absolute",
@@ -381,6 +384,7 @@ export default function ExplorePage() {
             <InteractiveMap slot="demographics" geojsonUrl="" valueProperty={null} binEdges={null} baseOnly />
           </div>
         )}
+      </div>
       </div>
     </div>
   );
