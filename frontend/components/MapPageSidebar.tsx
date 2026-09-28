@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 // Left navigation rail for the map page only, per 1B.png (design reference
@@ -13,7 +13,9 @@ import { useEffect, useState } from "react";
 // instruction, 2026-09-28.
 const SHOW_MENU_FONT_SIZE = 13;
 const MENU_FONT_SIZE = SHOW_MENU_FONT_SIZE * 1.5;
-const SIDEBAR_WIDTH = 64;
+// ~28% thinner than the previous 64px rail. Per project owner instruction,
+// 2026-09-28.
+const SIDEBAR_WIDTH = 46;
 const ANIMATION_MS = 320;
 
 type NavId = "data" | "about" | "methodology";
@@ -42,20 +44,41 @@ function SidebarNavItem({
   const [entered, setEntered] = useState(false);
   const [hovered, setHovered] = useState(false);
 
+  // Reset happens during render, via React's documented "adjusting state
+  // when a prop changes" pattern (state, not a ref -- refs can't be read
+  // during render under this project's lint rules), not inside the effect
+  // below -- calling setState synchronously in an effect body is flagged
+  // by react-hooks/set-state-in-effect.
+  const [prevActive, setPrevActive] = useState(active);
+  if (active !== prevActive) {
+    setPrevActive(active);
+    if (!active) setEntered(false);
+  }
+
   useEffect(() => {
-    if (!active) {
-      setEntered(false);
-      return;
-    }
+    if (!active) return;
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
   }, [active]);
 
   const isFilled = (active && entered) || hovered;
+  const router = useRouter();
 
-  const inner = (
+  // Navigation goes through router.push (not a <Link> wrapper) so every
+  // nav item -- Data, About, Methodology -- renders the exact same DOM
+  // structure with no extra wrapping element around any one of them. A
+  // <Link>-wrapped item previously sat slightly off from the others even
+  // with display:"contents" applied; identical markup is what actually
+  // guarantees Data and Methodology align on the same vertical axis. Per
+  // project owner instruction, 2026-09-28.
+  const handleClick = () => {
+    onClick?.();
+    if (href) router.push(href);
+  };
+
+  return (
     <div
-      onClick={onClick}
+      onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -103,19 +126,6 @@ function SidebarNavItem({
       </span>
     </div>
   );
-
-  // display:"contents" makes the Link itself invisible to layout so
-  // `inner`'s own auto-sizing applies directly against the <nav> column,
-  // exactly like the non-link items -- without this, Link's own default
-  // flex-start alignment pushed Methodology's box off-center.
-  if (href) {
-    return (
-      <Link href={href} style={{ textDecoration: "none", display: "contents" }}>
-        {inner}
-      </Link>
-    );
-  }
-  return inner;
 }
 
 export default function MapPageSidebar() {
@@ -143,21 +153,21 @@ export default function MapPageSidebar() {
         <SidebarNavItem
           label="Data"
           active={activeTab === "data"}
-          padding="54px 20px"
+          padding="54px 8px"
           onClick={() => setActiveTab("data")}
         />
         <div style={{ flex: 1 }} />
         <SidebarNavItem
           label="About"
           active={activeTab === "about"}
-          padding="30px 16px"
+          padding="30px 8px"
           onClick={() => setActiveTab("about")}
         />
         <div style={{ flex: "0 0 56px" }} />
         <SidebarNavItem
           label="Methodology"
           active={activeTab === "methodology"}
-          padding="30px 16px"
+          padding="30px 8px"
           href="/methodology"
         />
         <div style={{ flex: "0 0 48px" }} />
