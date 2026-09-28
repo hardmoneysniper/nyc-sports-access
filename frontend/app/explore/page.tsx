@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES } from "@/lib/selectionContext";
 import { PERCENT_BIN_EDGES, quantileBinEdges } from "@/lib/colorScale";
@@ -43,13 +43,43 @@ function formatTooltipLines(
   return [name, travelTimeLine];
 }
 
+const TOOLTIP_OFFSET = 14;
+
 function NtaTooltip({ info }: { info: TooltipInfo }) {
+  const elRef = useRef<HTMLDivElement>(null);
+  // Defaults to the cursor's bottom-right, same as before -- corrected to
+  // flip left/up (measured against the map panel's own box, which spans
+  // the full page width for the rightmost panel) whenever the tooltip
+  // would otherwise overflow past where the page clips it with
+  // overflow:hidden. Runs in useLayoutEffect so the flip is applied before
+  // paint, avoiding a visible jump. Per project owner report, 2026-09-28:
+  // hovering rightmost NTAs pushed the tooltip off-screen.
+  const [placement, setPlacement] = useState({ left: info.x + TOOLTIP_OFFSET, top: info.y + TOOLTIP_OFFSET });
+
+  useLayoutEffect(() => {
+    const el = elRef.current;
+    const container = el?.parentElement;
+    if (!el || !container) return;
+    const containerRect = container.getBoundingClientRect();
+
+    let left = info.x + TOOLTIP_OFFSET;
+    if (left + el.offsetWidth > containerRect.width) {
+      left = info.x - TOOLTIP_OFFSET - el.offsetWidth;
+    }
+    let top = info.y + TOOLTIP_OFFSET;
+    if (top + el.offsetHeight > containerRect.height) {
+      top = info.y - TOOLTIP_OFFSET - el.offsetHeight;
+    }
+    setPlacement({ left: Math.max(4, left), top: Math.max(4, top) });
+  }, [info]);
+
   return (
     <div
+      ref={elRef}
       style={{
         position: "absolute",
-        left: info.x + 14,
-        top: info.y + 14,
+        left: placement.left,
+        top: placement.top,
         zIndex: 1000,
         background: "white",
         color: "#111",
