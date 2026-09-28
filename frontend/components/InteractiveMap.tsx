@@ -50,7 +50,6 @@ type Props = {
   valueProperty: string | null;
   binEdges: number[] | null;
   onMapReady?: (slot: SlotId, map: MapboxMap | null) => void;
-  onInitialViewReady?: (slot: SlotId, view: MapView) => void;
   onFeatureIdsReady?: (slot: SlotId, ntaCodes: string[]) => void;
   onHover?: (slot: SlotId, info: HoverInfo | null) => void;
   onNtaClick?: (slot: SlotId, info: ClickInfo) => void;
@@ -97,7 +96,6 @@ export default function InteractiveMap({
   valueProperty,
   binEdges,
   onMapReady,
-  onInitialViewReady,
   onFeatureIdsReady,
   onHover,
   onNtaClick,
@@ -121,10 +119,17 @@ export default function InteractiveMap({
   // Always-current refs so effects/event handlers set up once at mount
   // (map creation, layer wiring) never read stale closed-over props --
   // valueProperty/binEdges/callbacks can all change after those run once.
+  // Updated in an effect (post-render), not during render itself, per
+  // react-hooks/refs.
   const coloringRef = useRef({ valueProperty, binEdges });
-  coloringRef.current = { valueProperty, binEdges };
-  const callbacksRef = useRef({ onMapReady, onInitialViewReady, onFeatureIdsReady, onHover, onNtaClick });
-  callbacksRef.current = { onMapReady, onInitialViewReady, onFeatureIdsReady, onHover, onNtaClick };
+  useEffect(() => {
+    coloringRef.current = { valueProperty, binEdges };
+  }, [valueProperty, binEdges]);
+
+  const callbacksRef = useRef({ onMapReady, onFeatureIdsReady, onHover, onNtaClick });
+  useEffect(() => {
+    callbacksRef.current = { onMapReady, onFeatureIdsReady, onHover, onNtaClick };
+  });
 
   useEffect(() => {
     if (baseOnly || !containerRef.current) return;
@@ -141,7 +146,13 @@ export default function InteractiveMap({
     map.touchZoomRotate.disableRotation();
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-left");
     mapRef.current = map;
-    callbacksRef.current.onMapReady?.(slot, map);
+    // onMapReady is reported to the parent only after this map's own
+    // initial fitBounds has run (see applyData below) -- reporting it
+    // here, immediately at construction, let the parent's camera-sync
+    // effect read this map's center/zoom before fitBounds had set them,
+    // relaying its still-default NYC_CENTER/NYC_ZOOM onto the OTHER
+    // (already correctly fitted) map and clobbering it. Reported live,
+    // 2026-09-29: the two maps started at different scales.
 
     const resizeObserver = new ResizeObserver(() => map.resize());
     resizeObserver.observe(containerRef.current);
@@ -202,10 +213,9 @@ export default function InteractiveMap({
       if (!firstFitDoneRef.current) {
         const bounds = featureCollectionBounds(colored);
         map.fitBounds(bounds, { padding: 10, duration: 0, maxZoom: MAPBOX_MAX_ZOOM });
-        const view: MapView = { center: map.getCenter().toArray() as [number, number], zoom: map.getZoom() };
-        map.setMinZoom(view.zoom);
+        map.setMinZoom(map.getZoom());
         firstFitDoneRef.current = true;
-        callbacksRef.current.onInitialViewReady?.(slot, view);
+        callbacksRef.current.onMapReady?.(slot, map);
       }
 
       map.on("mousemove", NTA_FILL_LAYER_ID, (e) => {

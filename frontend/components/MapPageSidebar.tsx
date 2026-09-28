@@ -129,9 +129,9 @@ function SidebarNavItem({
 }
 
 export default function MapPageSidebar() {
-  // "data" (this map page) is the only real destination today -- "about"
-  // is a dummy in-place toggle (no About page yet) purely so the
-  // emerge/retreat transition is exercised; "methodology" is a real link.
+  // "data" (this map page) is the current page; "about" links back to the
+  // landing page; "methodology" links to the methodology page. Per
+  // project owner instruction, 2026-09-29.
   const [activeTab, setActiveTab] = useState<NavId>("data");
 
   return (
@@ -161,7 +161,7 @@ export default function MapPageSidebar() {
           label="About"
           active={activeTab === "about"}
           padding="30px 8px"
-          onClick={() => setActiveTab("about")}
+          href="/"
         />
         <div style={{ flex: "0 0 56px" }} />
         <SidebarNavItem

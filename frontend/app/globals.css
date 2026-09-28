@@ -64,3 +64,21 @@ a {
 .typewriter-cursor {
   animation: cursorBlink 0.9s step-end infinite;
 }
+
+/* Landing page: pulsing scroll-down hint arrow below the heading. Per
+   project owner instruction, 2026-09-28. */
+@keyframes scrollArrowPulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(8px);
+  }
+}
+
+.landing-scroll-arrow {
+  animation: scrollArrowPulse 1.8s ease-in-out infinite;
+}

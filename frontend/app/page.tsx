@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { withBasePath } from "@/lib/basePath";
@@ -160,7 +161,7 @@ const STORY_STEPS: { headline: string; body: string }[] = [
 // section ever showed, with a black remainder underneath). Rebuilt to
 // match their actual, much simpler structure. Per project owner
 // instruction, 2026-09-28.
-function StorySection({ headline, body }: { headline: string; body: string }) {
+function StorySection({ headline, body, isLast }: { headline: string; body: string; isLast?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
 
@@ -176,6 +177,7 @@ function StorySection({ headline, body }: { headline: string; body: string }) {
     <section
       ref={ref}
       style={{
+        position: "relative",
         height: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -199,6 +201,24 @@ function StorySection({ headline, body }: { headline: string; body: string }) {
           {headline}
         </p>
         <p style={{ fontSize: 19, lineHeight: 1.6, color: "#fff", maxWidth: 680, marginTop: 24 }}>{body}</p>
+
+        {isLast && (
+          <Link href="/explore" style={{ marginTop: 40 }}>
+            <button
+              style={{
+                color: "#fff",
+                background: "transparent",
+                border: "1px solid #fff",
+                borderRadius: 6,
+                padding: "16px 36px",
+                cursor: "pointer",
+                textAlign: "center",
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>EXPLORE NYC</span>
+            </button>
+          </Link>
+        )}
       </div>
     </section>
   );
@@ -208,8 +228,22 @@ export default function LandingPage() {
   return (
     <div style={{ background: "#000" }}>
       <section style={{ height: "100vh", display: "flex" }}>
-        <div style={{ flex: "0 0 50%", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 40px" }}>
+        <div style={{ flex: "0 0 50%", position: "relative", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 40px" }}>
           <TypewriterHeading />
+          <div style={{ position: "absolute", bottom: 56, left: "50%", transform: "translateX(-50%)" }}>
+            <svg
+              className="landing-scroll-arrow"
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#fff"
+              strokeWidth={3}
+              aria-hidden
+            >
+              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
         </div>
         <div style={{ flex: "0 0 50%" }}>
           <ImageCarousel />
@@ -217,7 +251,7 @@ export default function LandingPage() {
       </section>
 
       {STORY_STEPS.map((s, i) => (
-        <StorySection key={i} headline={s.headline} body={s.body} />
+        <StorySection key={i} headline={s.headline} body={s.body} isLast={i === STORY_STEPS.length - 1} />
       ))}
     </div>
   );

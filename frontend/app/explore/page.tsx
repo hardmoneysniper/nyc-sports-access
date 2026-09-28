@@ -35,13 +35,13 @@ function formatTooltipLines(
     const categoryLine = `${categoryLabel}: ${typeof categoryValue === "number" ? `${categoryValue.toFixed(1)}%` : "No data"}`;
     return [name, populationLine, categoryLine];
   }
-  const sportLabel = (SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType).toLowerCase();
-  const travelTime = properties[`travel_time_${sportType}`];
-  const travelTimeLine =
-    typeof travelTime === "number"
-      ? `Travel time to nearest ${sportLabel} facility: ${travelTime.toFixed(1)} min`
-      : `Travel time to nearest ${sportLabel} facility: No data`;
-  return [name, travelTimeLine];
+  const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType;
+  const burdenIndex = properties[`burden_index_${sportType}`];
+  const burdenLine =
+    typeof burdenIndex === "number"
+      ? `${sportLabel} access burden index: ${Math.round(burdenIndex).toLocaleString()}`
+      : `${sportLabel} access burden index: No data`;
+  return [name, burdenLine];
 }
 
 const TOOLTIP_OFFSET = 14;
@@ -103,13 +103,20 @@ function NtaTooltip({ info }: { info: TooltipInfo }) {
 
 export default function ExplorePage() {
   const { demographicCategory, setDemographicCategory, sportType, setSportType } = useSelection();
-  const [showDemographics, setShowDemographics] = useState(true);
-  const [showTravelTime, setShowTravelTime] = useState(true);
-  const [travelTimeBinEdges, setTravelTimeBinEdges] = useState<number[] | null>(null);
+  // The burden-index map is always shown -- it's the page's primary
+  // content, not a toggle. Demographics is the optional add-on: checking
+  // it opens the second (synced) map, unchecking it closes it. Per
+  // project owner instruction, 2026-09-28.
+  const [showDemographics, setShowDemographics] = useState(false);
+  const [burdenBinEdges, setBurdenBinEdges] = useState<number[] | null>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
   const mapRefs = useRef<Record<SlotId, MapboxMap | null>>({ demographics: null, "travel-time": null });
-  const initialViewsRef = useRef<Record<SlotId, MapView | null>>({ demographics: null, "travel-time": null });
+  // The view both maps shared right before the current magnify -- captured
+  // fresh at click time (not each map's own independently-recorded initial
+  // fit, which could differ between the two -- see project owner report,
+  // 2026-09-29, "the scale they shrink to is not universal").
+  const preClickViewRef = useRef<MapView | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const selectedSlotRef = useRef<SlotId | null>(null);
   const selectedInfoRef = useRef<{ lines: string[]; x: number; y: number } | null>(null);
@@ -121,17 +128,12 @@ export default function ExplorePage() {
   const allNtaCodesRef = useRef<string[]>([]);
   const [mapReadyVersion, setMapReadyVersion] = useState(0);
 
-  const valueProperty = `travel_time_${sportType}`;
-  const dualSynced = showDemographics && showTravelTime;
-  const showBaseOnly = !showDemographics && !showTravelTime;
+  const valueProperty = `burden_index_${sportType}`;
+  const dualSynced = showDemographics;
 
   const handleMapReady = useCallback((slot: SlotId, map: MapboxMap | null) => {
     mapRefs.current[slot] = map;
     setMapReadyVersion((v) => v + 1);
-  }, []);
-
-  const handleInitialViewReady = useCallback((slot: SlotId, view: MapView) => {
-    initialViewsRef.current[slot] = view;
   }, []);
 
   const handleFeatureIdsReady = useCallback((_slot: SlotId, ntaCodes: string[]) => {
@@ -205,17 +207,23 @@ export default function ExplorePage() {
     (slot: SlotId, info: ClickInfo) => {
       const map = mapRefs.current[slot];
       if (!map) return;
+      const otherSlot: SlotId = slot === "demographics" ? "travel-time" : "demographics";
+      const otherMap = mapRefs.current[otherSlot];
 
       if (selectedIdRef.current === info.ntaCode) {
-        // Toggle off -- shrink back to the original (pre-click) scale and
-        // fade every NTA back to its normal, uniform opacity.
+        // Toggle off -- shrink both maps back to the exact view they
+        // shared right before the click, fading every NTA back to its
+        // normal, uniform opacity.
         applyFeatureState(info.ntaCode, "selected", false);
         setDimming(false);
         selectedIdRef.current = null;
         selectedSlotRef.current = null;
         selectedInfoRef.current = null;
-        const initial = initialViewsRef.current[slot];
-        if (initial) map.easeTo({ center: initial.center, zoom: initial.zoom, duration: 1200 });
+        const preClick = preClickViewRef.current;
+        if (preClick) {
+          map.easeTo({ center: preClick.center, zoom: preClick.zoom, duration: 1200 });
+          otherMap?.easeTo({ center: preClick.center, zoom: preClick.zoom, duration: 1200 });
+        }
         setTooltip(null);
         return;
       }
@@ -227,12 +235,18 @@ export default function ExplorePage() {
       selectedInfoRef.current = { lines, x: info.x, y: info.y };
       applyFeatureState(info.ntaCode, "selected", true);
       setDimming(true);
+      preClickViewRef.current = { center: map.getCenter().toArray() as [number, number], zoom: map.getZoom() };
       // Almost-fill-the-screen magnify -- padding is intentionally small.
-      // The other (synced) map mirrors this in real time via the "move"
-      // relay below, frame by frame, since Mapbox (unlike Leaflet's CSS3
-      // zoom transition) fires "move" continuously during flyTo/fitBounds
-      // too. Per project owner instruction, 2026-09-27.
+      // Called directly on BOTH maps (not relayed via the "move" listener
+      // below) so they animate in parallel from the same instant with
+      // identical parameters, rather than one map leading and the other
+      // reactively jumping a frame behind on every "move" tick -- per
+      // project owner report, 2026-09-29, that relay-only approach had a
+      // visible lag between the two, and could leave them at different
+      // scales if either map's own recorded "initial view" ever diverged
+      // from the other's.
       map.fitBounds(info.bounds, { padding: 40, duration: 1200, maxZoom: MAPBOX_MAX_ZOOM });
+      otherMap?.fitBounds(info.bounds, { padding: 40, duration: 1200, maxZoom: MAPBOX_MAX_ZOOM });
       setTooltip({ slot, ntaCode: info.ntaCode, lines, x: info.x, y: info.y });
     },
     [applyFeatureState, setDimming, demographicCategory, sportType]
@@ -276,12 +290,12 @@ export default function ExplorePage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(withBasePath("/data/travel_time.geojson"))
+    fetch(withBasePath("/data/burden_index.geojson"))
       .then((res) => res.json())
       .then((data: GeoJSON.FeatureCollection) => {
         if (cancelled) return;
         const values = data.features.map((f) => f.properties?.[valueProperty] as number | null | undefined);
-        setTravelTimeBinEdges(quantileBinEdges(values));
+        setBurdenBinEdges(quantileBinEdges(values));
       });
     return () => {
       cancelled = true;
@@ -309,13 +323,14 @@ export default function ExplorePage() {
           color: "#111",
         }}
       >
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={showDemographics} onChange={(e) => setShowDemographics(e.target.checked)} />
-          Demographics
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={showTravelTime} onChange={(e) => setShowTravelTime(e.target.checked)} />
-          Travel Time
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={showDemographics}
+            onChange={(e) => setShowDemographics(e.target.checked)}
+            style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
+          />
+          Demographics (add-on)
         </label>
         {showDemographics && (
           <div>
@@ -333,36 +348,31 @@ export default function ExplorePage() {
             </select>
           </div>
         )}
-        {showTravelTime && (
-          <div>
-            <label htmlFor="sport-select">Sport facility type: </label>
-            <select id="sport-select" value={sportType} onChange={(e) => setSportType(e.target.value as typeof sportType)}>
-              {SPORT_TYPES.map((sport) => (
-                <option key={sport.value} value={sport.value}>
-                  {sport.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div>
+          <label htmlFor="sport-select">Sport facility type: </label>
+          <select id="sport-select" value={sportType} onChange={(e) => setSportType(e.target.value as typeof sportType)}>
+            {SPORT_TYPES.map((sport) => (
+              <option key={sport.value} value={sport.value}>
+                {sport.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div style={{ height: "100%", display: "flex" }}>
-        {showTravelTime && (
-          <div style={{ flex: 1, height: "100%", position: "relative" }}>
-            <InteractiveMap
-              slot="travel-time"
-              geojsonUrl={withBasePath("/data/travel_time.geojson")}
-              valueProperty={valueProperty}
-              binEdges={travelTimeBinEdges}
-              onMapReady={handleMapReady}
-              onInitialViewReady={handleInitialViewReady}
-              onFeatureIdsReady={handleFeatureIdsReady}
-              onHover={handleHover}
-              onNtaClick={handleNtaClick}
-            />
-            {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
-          </div>
-        )}
+        <div style={{ flex: 1, height: "100%", position: "relative" }}>
+          <InteractiveMap
+            slot="travel-time"
+            geojsonUrl={withBasePath("/data/burden_index.geojson")}
+            valueProperty={valueProperty}
+            binEdges={burdenBinEdges}
+            onMapReady={handleMapReady}
+            onFeatureIdsReady={handleFeatureIdsReady}
+            onHover={handleHover}
+            onNtaClick={handleNtaClick}
+          />
+          {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
+        </div>
         {showDemographics && (
           <div style={{ flex: 1, height: "100%", position: "relative" }}>
             <InteractiveMap
@@ -371,17 +381,11 @@ export default function ExplorePage() {
               valueProperty={demographicCategory}
               binEdges={PERCENT_BIN_EDGES}
               onMapReady={handleMapReady}
-              onInitialViewReady={handleInitialViewReady}
               onFeatureIdsReady={handleFeatureIdsReady}
               onHover={handleHover}
               onNtaClick={handleNtaClick}
             />
             {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
-          </div>
-        )}
-        {showBaseOnly && (
-          <div style={{ flex: 1, height: "100%" }}>
-            <InteractiveMap slot="demographics" geojsonUrl="" valueProperty={null} binEdges={null} baseOnly />
           </div>
         )}
       </div>

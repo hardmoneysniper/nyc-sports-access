@@ -12,6 +12,12 @@ Writes to frontend/public/data/:
   travel_time_{sport} columns in data/processed/nta_output_combined_time.csv
   (the original 4-window data -- the 5pm evening-window data is NOT used
   for this file).
+- burden_index.geojson: NTA boundaries + a burden_index_{group} column per
+  one of the same 21 SPORT_TYPE_GROUPS categories -- a
+  population-conditioned access burden score (see
+  docs/SOCCER_ACCESS_BURDEN_METHODOLOGY.md), generalized from a soccer-only
+  prototype to every sport type. This is what the dashboard's non-
+  demographics map shows now, in place of raw travel time.
 - nta_boundaries.geojson: NTA2020 + geometry only, no other properties --
   the lightweight "faint backdrop of every NTA" layer used behind the
   NTA-clicked detail view (see NtaDetailView.tsx).
@@ -33,9 +39,11 @@ the browser on every page load; per-NTA files mean a click on one NTA only
 ever fetches that NTA's data.
 """
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pyogrio
 from dotenv import load_dotenv
+from scipy import stats
 
 from pipeline import config, facilities as facilities_module, geography
 
@@ -80,6 +88,58 @@ def export_travel_time():
     output_path = OUTPUT_DIR / "travel_time.geojson"
     merged.to_file(output_path, driver="GeoJSON")
     print(f"Wrote {output_path} ({len(merged)} NTAs, {len(group_columns)} sport types)")
+
+
+def export_burden_index():
+    """Population-conditioned access burden score (see
+    docs/SOCCER_ACCESS_BURDEN_METHODOLOGY.md for the full derivation),
+    generalized here from soccer-only to every one of
+    config.SPORT_TYPE_GROUPS' 21 display-level sport types. This is what
+    the dashboard's non-demographics map now shows, in place of raw
+    travel_time.geojson.
+
+    Per sport type: fit travel_time_{sport} ~ log(total_population) by OLS
+    across NTAs with a real value for both; a positive residual means that
+    NTA's access is worse than its own population size would predict;
+    burden_index_{sport} = max(residual, 0) * total_population -- excess
+    person-minutes of access burden beyond what population alone predicts,
+    weighted by how many residents that affects. NaN wherever the sport's
+    travel time or the NTA's population itself is missing/zero (regression
+    fit only on the valid subset, per sport, since different sports have
+    different unreachable NTAs).
+    """
+    nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020", "NTAName", "total_population", "geometry"]]
+    times = pd.read_csv(config.PROCESSED_DIR / "nta_output_combined_time.csv")
+    merged = nta.merge(times.drop(columns=["NTAName"]), on="NTA2020", how="left")
+
+    for group, members in config.SPORT_TYPE_GROUPS.items():
+        member_columns = [f"travel_time_{m}" for m in members]
+        merged[f"travel_time_{group}"] = merged[member_columns].min(axis=1)
+
+    log_population = np.log(merged["total_population"].clip(lower=1))
+    has_population = merged["total_population"] > 0
+
+    burden_columns = []
+    for group in config.SPORT_TYPE_GROUPS:
+        tt_col = f"travel_time_{group}"
+        burden_col = f"burden_index_{group}"
+        burden_columns.append(burden_col)
+
+        valid = has_population & merged[tt_col].notna()
+        if valid.sum() < 10:
+            merged[burden_col] = float("nan")
+            continue
+
+        slope, intercept, *_ = stats.linregress(log_population[valid], merged.loc[valid, tt_col])
+        predicted = intercept + slope * log_population
+        residual = merged[tt_col] - predicted
+        burden = residual.clip(lower=0) * merged["total_population"]
+        merged[burden_col] = burden.where(valid)
+
+    output = merged[["NTA2020", "NTAName", "geometry"] + burden_columns]
+    output_path = OUTPUT_DIR / "burden_index.geojson"
+    output.to_file(output_path, driver="GeoJSON")
+    print(f"Wrote {output_path} ({len(output)} NTAs, {len(burden_columns)} sport types)")
 
 
 def export_nta_boundaries():
@@ -136,6 +196,7 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     export_demographics()
     export_travel_time()
+    export_burden_index()
     export_nta_boundaries()
     export_tracts_by_nta()
     export_routes_by_nta()
