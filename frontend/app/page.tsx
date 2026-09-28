@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { withBasePath } from "@/lib/basePath";
@@ -14,40 +13,22 @@ const DELETE_MS = 35;
 const PAUSE_MS = 1600;
 const WORD_GAP_MS = 250;
 
+// Black background / white text throughout, per project owner
+// instruction, 2026-09-28.
 const HEADING_STYLE: CSSProperties = {
   fontSize: 40,
   fontWeight: 700,
   lineHeight: 1.25,
   whiteSpace: "nowrap",
-  color: "#000",
+  color: "#fff",
 };
 
 // Cycles "How close is the <sport venue>" through SPORT_WORDS with a
 // typewriter effect: types the venue, pauses, deletes it, types the next.
-// The measured width (widest full phrase, via a hidden offscreen copy of
-// all 5 phrases) is reported up to the parent via onMeasured so the
-// paragraph below can share the exact same width/left edge instead of
-// being centered independently. Per project owner instruction,
-// 2026-09-26 (and refined 2026-09-27 to left-align the paragraph to the
-// heading while widening it to fit more words per line).
-function TypewriterHeading({ onMeasured }: { onMeasured: (width: number) => void }) {
+function TypewriterHeading() {
   const [wordIndex, setWordIndex] = useState(0);
   const [subLength, setSubLength] = useState(0);
   const [phase, setPhase] = useState<"typing" | "deleting">("typing");
-  const measureRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = measureRef.current;
-    if (!el) return;
-    let max = 0;
-    Array.from(el.children).forEach((child) => {
-      const w = (child as HTMLElement).getBoundingClientRect().width;
-      if (w > max) max = w;
-    });
-    onMeasured(Math.ceil(max));
-    // onMeasured is a stable setter from the parent; only needs to run once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     const currentWord = SPORT_WORDS[wordIndex];
@@ -76,35 +57,21 @@ function TypewriterHeading({ onMeasured }: { onMeasured: (width: number) => void
   const visibleWord = SPORT_WORDS[wordIndex].slice(0, subLength);
 
   return (
-    <div>
-      <div
-        ref={measureRef}
-        aria-hidden
-        style={{ position: "absolute", visibility: "hidden", height: 0, overflow: "hidden", ...HEADING_STYLE }}
-      >
-        {SPORT_WORDS.map((word) => (
-          <div key={word}>
-            {HEADING_PREFIX}
-            {word}
-          </div>
-        ))}
-      </div>
-      <div style={{ textAlign: "left", ...HEADING_STYLE }}>
-        {HEADING_PREFIX}
-        {visibleWord}
-        <span
-          className="typewriter-cursor"
-          style={{
-            display: "inline-block",
-            width: 3,
-            height: "0.75em",
-            marginLeft: 4,
-            background: "#000",
-            verticalAlign: "middle",
-            transform: "translateY(-0.05em)",
-          }}
-        />
-      </div>
+    <div style={{ textAlign: "left", ...HEADING_STYLE }}>
+      {HEADING_PREFIX}
+      {visibleWord}
+      <span
+        className="typewriter-cursor"
+        style={{
+          display: "inline-block",
+          width: 3,
+          height: "0.75em",
+          marginLeft: 4,
+          background: "#fff",
+          verticalAlign: "middle",
+          transform: "translateY(-0.05em)",
+        }}
+      />
     </div>
   );
 }
@@ -117,7 +84,7 @@ const SLIDE_MS = 800;
 // the loop from image 4 back to image 1 can slide (rather than snap) --
 // once that slide finishes, the transform resets to slot 0 instantly
 // (transition disabled for one frame) since slot 4 is visually identical
-// to slot 0. Per project owner instruction, 2026-09-26.
+// to slot 0.
 function ImageCarousel() {
   const [index, setIndex] = useState(0);
   const [animate, setAnimate] = useState(true);
@@ -162,52 +129,96 @@ function ImageCarousel() {
   );
 }
 
-export default function LandingPage() {
-  // Shared width for both the heading and the paragraph below it, so the
-  // paragraph's left edge lines up with "How close is the..." instead of
-  // being centered independently at a narrower width. Widening it to the
-  // heading's own (wider) measured width also means the paragraph wraps
-  // into fewer, fuller lines. Per project owner instruction, 2026-09-27.
-  const [contentWidth, setContentWidth] = useState<number | null>(null);
+// Each scrolled-to statement, two lines (headline + supporting line).
+const STORY_STEPS: { headline: string; body: string }[] = [
+  {
+    headline: "More people should mean more places to play.",
+    body: "You would expect neighborhoods with more residents to have better access to public sports facilities.",
+  },
+  {
+    headline: "But that’s not always what we found.",
+    body: "Across New York City, population and access to sports facilities do not always line up.",
+  },
+  {
+    headline: "Some neighborhoods have much less access than others.",
+    body: "We highlight places where access to specific sports facilities falls short, and look at who lives in those neighborhoods (including immigrant and lower-income communities.)",
+  },
+  {
+    headline: "That can help show where investment is needed.",
+    body: "By comparing population, demographics, and access across different sports, the project points to neighborhoods where new or improved facilities could make the biggest difference.",
+  },
+];
+
+// senseable.mit.edu/shaded-politics's own text sections (#intro,
+// #introMap) are plain `h-screen` sections in normal document flow -- no
+// absolute stacking, no position:sticky, no JS-computed transform at all.
+// The only pinned/scroll-scrubbed element on that whole page is their
+// title *video*, which needs continuous scrubbing; ordinary text just
+// scrolls natively. An earlier version of this page tried to stack every
+// section inside one big sticky-pinned container with a hand-rolled
+// scroll-progress calculation, which is what broke (only the first
+// section ever showed, with a black remainder underneath). Rebuilt to
+// match their actual, much simpler structure. Per project owner
+// instruction, 2026-09-28.
+function StorySection({ headline, body }: { headline: string; body: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.5 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden", background: "#fff" }}>
-      <div style={{ flex: "0 0 50%", position: "relative", display: "flex", flexDirection: "column", background: "#fff" }}>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 40px" }}>
-          <div style={{ width: contentWidth ?? undefined, margin: "0 auto" }}>
-            <TypewriterHeading onMeasured={setContentWidth} />
-            <p
-              style={{
-                marginTop: 32,
-                fontSize: 20,
-                lineHeight: 1.5,
-                textAlign: "left",
-                color: "#111",
-              }}
-            >
-              Explore access to public sports facilities across New York City and see how it varies across neighborhoods and communities.
-            </p>
-          </div>
+    <section
+      ref={ref}
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: "0 96px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          opacity: inView ? 1 : 0,
+          transform: inView ? "translateY(0)" : "translateY(24px)",
+          transition: "opacity 700ms ease, transform 700ms ease",
+        }}
+      >
+        <p style={{ fontSize: 34, fontWeight: 700, lineHeight: 1.35, color: "#fff", maxWidth: 820, margin: 0 }}>
+          {headline}
+        </p>
+        <p style={{ fontSize: 19, lineHeight: 1.6, color: "#fff", maxWidth: 680, marginTop: 24 }}>{body}</p>
+      </div>
+    </section>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <div style={{ background: "#000" }}>
+      <section style={{ height: "100vh", display: "flex" }}>
+        <div style={{ flex: "0 0 50%", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 40px" }}>
+          <TypewriterHeading />
         </div>
-        <Link href="/explore" style={{ position: "absolute", bottom: 48, left: "50%", transform: "translateX(-50%)" }}>
-          <button
-            style={{
-              color: "#000",
-              background: "#fff",
-              border: "1px solid #d0d0d0",
-              borderRadius: 6,
-              padding: "12px 28px",
-              cursor: "pointer",
-              textAlign: "center",
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>EXPLORE NYC</span>
-          </button>
-        </Link>
-      </div>
-      <div style={{ flex: "0 0 50%" }}>
-        <ImageCarousel />
-      </div>
+        <div style={{ flex: "0 0 50%" }}>
+          <ImageCarousel />
+        </div>
+      </section>
+
+      {STORY_STEPS.map((s, i) => (
+        <StorySection key={i} headline={s.headline} body={s.body} />
+      ))}
     </div>
   );
 }
