@@ -98,13 +98,21 @@ def export_burden_index():
     the dashboard's non-demographics map now shows, in place of raw
     travel_time.geojson.
 
-    Per sport type: fit travel_time_{sport} ~ log(total_population) by OLS
-    across NTAs with a real value for both; a positive residual means that
-    NTA's access is worse than its own population size would predict;
+    Per sport type: fit travel_time_{sport} ~ log(population_density) by OLS
+    across NTAs with a real value for both -- density (population per
+    square mile), not raw population, since travel time is fundamentally
+    spatial and density explains far more of its variance (verified
+    empirically, 2026-09-29: log(density) r^2=0.41 vs log(population)
+    r^2=0.23 for soccer -- two NTAs can share a population but differ
+    hugely in land area, and only density sees that). A positive residual
+    means that NTA's access is worse than its own density would predict;
     burden_index_{sport} = max(residual, 0) * total_population -- excess
-    person-minutes of access burden beyond what population alone predicts,
-    weighted by how many residents that affects. NaN wherever the sport's
-    travel time or the NTA's population itself is missing/zero (regression
+    person-minutes of access burden beyond what density alone predicts,
+    weighted by RAW population (not density): weighting represents how
+    many actual residents are affected, and two NTAs with equal population
+    but different density represent the same number of underserved people
+    regardless of how spread out they are. NaN wherever the sport's travel
+    time or the NTA's population/area itself is missing/zero (regression
     fit only on the valid subset, per sport, since different sports have
     different unreachable NTAs).
     """
@@ -116,7 +124,12 @@ def export_burden_index():
         member_columns = [f"travel_time_{m}" for m in members]
         merged[f"travel_time_{group}"] = merged[member_columns].min(axis=1)
 
-    log_population = np.log(merged["total_population"].clip(lower=1))
+    # EPSG:2263 (feet) is this pipeline's standard projected CRS (see
+    # docs/METHODOLOGY.md) -- reprojecting only for this area computation,
+    # not mutating merged's own (geographic) geometry used for output.
+    area_sqmi = merged.to_crs(config.CRS_PROJECTED).geometry.area / (5280**2)
+    density = merged["total_population"] / area_sqmi
+    log_density = np.log(density.clip(lower=1e-6))
     has_population = merged["total_population"] > 0
 
     burden_columns = []
@@ -130,8 +143,8 @@ def export_burden_index():
             merged[burden_col] = float("nan")
             continue
 
-        slope, intercept, *_ = stats.linregress(log_population[valid], merged.loc[valid, tt_col])
-        predicted = intercept + slope * log_population
+        slope, intercept, *_ = stats.linregress(log_density[valid], merged.loc[valid, tt_col])
+        predicted = intercept + slope * log_density
         residual = merged[tt_col] - predicted
         burden = residual.clip(lower=0) * merged["total_population"]
         merged[burden_col] = burden.where(valid)
