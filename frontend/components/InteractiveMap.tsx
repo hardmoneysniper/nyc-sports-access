@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { colorForValue, NO_DATA_COLOR } from "@/lib/colorScale";
+import { colorForValue, colorForBurdenValue, NO_DATA_COLOR } from "@/lib/colorScale";
 import {
   MAPBOX_TOKEN,
   MAPBOX_STYLE,
@@ -49,6 +49,12 @@ type Props = {
   geojsonUrl: string;
   valueProperty: string | null;
   binEdges: number[] | null;
+  // "positiveQuantile" is the burden-index map's coloring: values <= 0 get
+  // a single flat "no excess burden" color instead of joining the 5-color
+  // gradient, which only spans the positive (underserved) values. Demo-
+  // graphics stays on the default "quantile" mode, where 0% is a normal
+  // value, not a special case. Per project owner instruction, 2026-09-29.
+  colorMode?: "quantile" | "positiveQuantile";
   onMapReady?: (slot: SlotId, map: MapboxMap | null) => void;
   onFeatureIdsReady?: (slot: SlotId, ntaCodes: string[]) => void;
   onHover?: (slot: SlotId, info: HoverInfo | null) => void;
@@ -59,13 +65,18 @@ type Props = {
 function colorizeGeojson(
   data: GeoJSON.FeatureCollection,
   valueProperty: string | null,
-  binEdges: number[] | null
+  binEdges: number[] | null,
+  colorMode: "quantile" | "positiveQuantile"
 ): GeoJSON.FeatureCollection {
   return {
     ...data,
     features: data.features.map((f) => {
       const value = valueProperty && binEdges ? (f.properties?.[valueProperty] as number | null | undefined) : null;
-      const fillColor = binEdges ? colorForValue(value, binEdges) : NO_DATA_COLOR;
+      const fillColor = !binEdges
+        ? NO_DATA_COLOR
+        : colorMode === "positiveQuantile"
+          ? colorForBurdenValue(value, binEdges)
+          : colorForValue(value, binEdges);
       const ntaCode = f.properties?.NTA2020 as string;
       // Drives both the gray "no data" fill AND (per project owner
       // instruction, 2026-09-27) whether the NTA is clickable at all --
@@ -95,6 +106,7 @@ export default function InteractiveMap({
   geojsonUrl,
   valueProperty,
   binEdges,
+  colorMode = "quantile",
   onMapReady,
   onFeatureIdsReady,
   onHover,
@@ -121,10 +133,10 @@ export default function InteractiveMap({
   // valueProperty/binEdges/callbacks can all change after those run once.
   // Updated in an effect (post-render), not during render itself, per
   // react-hooks/refs.
-  const coloringRef = useRef({ valueProperty, binEdges });
+  const coloringRef = useRef({ valueProperty, binEdges, colorMode });
   useEffect(() => {
-    coloringRef.current = { valueProperty, binEdges };
-  }, [valueProperty, binEdges]);
+    coloringRef.current = { valueProperty, binEdges, colorMode };
+  }, [valueProperty, binEdges, colorMode]);
 
   const callbacksRef = useRef({ onMapReady, onFeatureIdsReady, onHover, onNtaClick });
   useEffect(() => {
@@ -160,8 +172,8 @@ export default function InteractiveMap({
     const applyData = () => {
       const raw = rawGeojsonRef.current;
       if (!raw) return;
-      const { valueProperty: vp, binEdges: be } = coloringRef.current;
-      const colored = colorizeGeojson(raw, vp, be);
+      const { valueProperty: vp, binEdges: be, colorMode: cm } = coloringRef.current;
+      const colored = colorizeGeojson(raw, vp, be, cm);
       const source = map.getSource(NTA_SOURCE_ID) as GeoJSONSource | undefined;
       if (source) {
         source.setData(colored as GeoJSON.GeoJSON);
@@ -292,8 +304,8 @@ export default function InteractiveMap({
     if (!map || !raw) return;
     const source = map.getSource(NTA_SOURCE_ID) as GeoJSONSource | undefined;
     if (!source) return;
-    source.setData(colorizeGeojson(raw, valueProperty, binEdges) as GeoJSON.GeoJSON);
-  }, [valueProperty, binEdges, baseOnly]);
+    source.setData(colorizeGeojson(raw, valueProperty, binEdges, colorMode) as GeoJSON.GeoJSON);
+  }, [valueProperty, binEdges, colorMode, baseOnly]);
 
   if (baseOnly) {
     return <BaseOnlyMap />;

@@ -106,15 +106,18 @@ def export_burden_index():
     r^2=0.23 for soccer -- two NTAs can share a population but differ
     hugely in land area, and only density sees that). A positive residual
     means that NTA's access is worse than its own density would predict;
-    burden_index_{sport} = max(residual, 0) * total_population -- excess
-    person-minutes of access burden beyond what density alone predicts,
-    weighted by RAW population (not density): weighting represents how
-    many actual residents are affected, and two NTAs with equal population
-    but different density represent the same number of underserved people
-    regardless of how spread out they are. NaN wherever the sport's travel
-    time or the NTA's population/area itself is missing/zero (regression
-    fit only on the valid subset, per sport, since different sports have
-    different unreachable NTAs).
+    burden_index_{sport} = max(residual, 0) * (total_population / 10_000) --
+    excess person-minutes of access burden beyond what density alone
+    predicts, weighted by RAW population in units of 10,000 residents (not
+    density, and not raw headcount -- the /10_000 is a pure display-scale
+    choice, dividing every NTA's weight by the same constant, so it changes
+    nothing about the ranking, only how large the numbers look). Weighting
+    represents how many actual residents are affected, and two NTAs with
+    equal population but different density represent the same number of
+    underserved people regardless of how spread out they are. NaN wherever
+    the sport's travel time or the NTA's population/area itself is
+    missing/zero (regression fit only on the valid subset, per sport,
+    since different sports have different unreachable NTAs).
     """
     nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020", "NTAName", "total_population", "geometry"]]
     times = pd.read_csv(config.PROCESSED_DIR / "nta_output_combined_time.csv")
@@ -146,7 +149,7 @@ def export_burden_index():
         slope, intercept, *_ = stats.linregress(log_density[valid], merged.loc[valid, tt_col])
         predicted = intercept + slope * log_density
         residual = merged[tt_col] - predicted
-        burden = residual.clip(lower=0) * merged["total_population"]
+        burden = residual.clip(lower=0) * (merged["total_population"] / 10_000)
         merged[burden_col] = burden.where(valid)
 
     output = merged[["NTA2020", "NTAName", "geometry"] + burden_columns]

@@ -45,12 +45,12 @@ Positive residual: this NTA's actual access is worse than a neighborhood of its 
 
 ```
 excess_residual = max(residual, 0)
-burden_score = excess_residual × total_population
+burden_score = excess_residual × (total_population ÷ 10,000)
 ```
 
-Negative residuals are clipped to zero — only underperforming NTAs are ranked. The weight here is **raw population, not density** — deliberately a different variable than the regression predictor in §3. Weighting is meant to answer "how many actual residents does this affect," and two NTAs with equal population but different density represent the same number of underserved people regardless of how spread out they are; weighting by density would inflate the denser one's score and deflate the sparser one's even though the same number of real people are affected in both. Multiplying (not dividing) by population means a bad residual affecting more residents produces a larger score, rather than diluting them the way a per-capita ratio would (§7).
+Negative residuals are clipped to zero — only underperforming NTAs are ranked. The weight here is **raw population, not density** — deliberately a different variable than the regression predictor in §3. Weighting is meant to answer "how many actual residents does this affect," and two NTAs with equal population but different density represent the same number of underserved people regardless of how spread out they are; weighting by density would inflate the denser one's score and deflate the sparser one's even though the same number of real people are affected in both. Multiplying (not dividing) by population means a bad residual affecting more residents produces a larger score, rather than diluting them the way a per-capita ratio would (§7). Population is expressed in units of 10,000 residents purely to keep the resulting numbers small and readable (revised 2026-09-29) — dividing every NTA's weight by the same constant changes nothing about the ranking, only how large the numbers look.
 
-`burden_score` has no standalone real-world unit ("excess minutes × people" isn't dollars or trips) — it is a ranking device only. The rank order is the deliverable, not the magnitude.
+`burden_score` has no standalone real-world unit ("excess minutes × 10,000-person units" isn't dollars or trips) — it is a ranking device only. The rank order is the deliverable, not the magnitude.
 
 ## 6. Result (as of this run)
 
@@ -84,3 +84,17 @@ Considered and rejected. `travel_time_soccer` is already a per-person (intensive
 - **Excludes NTAs with zero recorded population** (48 fewer than the full 262 in METHODOLOGY.md's NTA count once combined with the 48 NTAs already unreachable for every sport type — some overlap between the two exclusion sets is expected but not separately verified here).
 - **`burden_score` magnitude is not independently meaningful** (§5) — only the ranking should be used or cited, not the raw numbers.
 - Inherits all upstream limitations from §11 of METHODOLOGY.md (single reference date, ACS 5-year rolling estimates, soccer-facility definition).
+
+## 10. Dashboard presentation (live map, all 21 sport types)
+
+`compute_soccer_access_burden.py` above is the standalone soccer-only script backing this document; the same computation is generalized to every one of the 21 `SPORT_TYPE_GROUPS` sport types by `export_dashboard_data.py`'s `export_burden_index()` and shown on the live dashboard's map (replacing raw travel time there). The coloring/legend convention described here (implemented in `frontend/lib/colorScale.ts`) applies identically across all 21 sports, not just soccer — current as of 2026-09-29.
+
+**Bins**: 5 color bands, computed per sport from that sport's own positive `burden_index` values only (`positiveQuantileBinEdges`) — equal-count quintiles, so each band covers 20% of the underserved (positive-score) NTAs. NTAs at or below 0 are not spread across the gradient; they share the exact same color as the bottom band, since a zero-or-negative score means "not part of the underserved story" (§5, §7), not "a slightly milder version of it."
+
+**Colors**: green (`#1a9641`, ≤0 and 0–20th percentile) → yellow (`#ffeb3b`, 20–40th) → orange (`#fb8c00`, 40–60th) → red (`#e53935`, 60–80th) → dark red (`#8b0000`, 80–100th).
+
+**Legend labels**: "Nth percentile" (20th/40th/60th/80th/100th) — the band's upper cutoff among that sport's positive-scored NTAs, not a value range and not a raw number.
+
+**Tooltip**: shows the exact raw `burden_index` value (one decimal place), not the percentile band — e.g. "Soccer access burden index: 144.5". The map's color communicates rank; the tooltip gives the precise (if not independently meaningful, §5) number for anyone who wants it.
+
+An equal-WIDTH alternative (5 even divisions of `[0, max]` instead of equal-count quantiles) was prototyped for soccer only and reverted after review — quantile bins are what's live for every sport, including soccer.

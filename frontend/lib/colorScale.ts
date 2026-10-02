@@ -1,5 +1,5 @@
 // Same 5-step ColorBrewer-derived blue ramp used throughout this project's
-// static maps (see make_maps_binned.py), light to dark.
+// static maps (see make_maps_binned.py), light to dark. Demographics only.
 export const BIN_COLORS = ["#bdd7e7", "#6baed6", "#3182bd", "#08519c", "#08306b"];
 export const NO_DATA_COLOR = "#898781";
 
@@ -40,4 +40,79 @@ export function binLabel(binEdges: number[], index: number, suffix = ""): string
   const lower = index === 0 ? binEdges[0] : binEdges[index];
   const upper = binEdges[index + 1];
   return `${lower.toFixed(1)}–${upper.toFixed(1)}${suffix}`;
+}
+
+// --- Burden-index map only (green=low burden/good -> red=high burden/bad,
+// per project owner instruction, 2026-09-29). burden_index is already
+// floored at 0 by export_burden_index() (residual.clip(lower=0)), so it
+// never holds negative values -- NTAs at or below 0 ("no excess burden")
+// share the SAME green as the bottom 20th-percentile band, not a separate
+// shade (a separate pale green was tried and reported confusable with it).
+// Kept separate from BIN_COLORS/colorForValue/quantileBinEdges above so
+// demographics (where 0% is a normal, meaningful value, not a special
+// case) is completely unaffected. ---
+
+// Green (good) -> yellow -> orange -> red -> dark red (worst), per project
+// owner instruction, 2026-09-29.
+export const BURDEN_BIN_COLORS = ["#1a9641", "#ffeb3b", "#fb8c00", "#e53935", "#8b0000"];
+// "Nth percentile" (the band's upper cutoff), not a "low-high" range --
+// per project owner instruction, 2026-09-29.
+export const BURDEN_BAND_LABELS = ["20th percentile", "40th percentile", "60th percentile", "80th percentile", "100th percentile"];
+
+/**
+ * Equal-count (quintile) bin edges computed from only the POSITIVE values
+ * in a set (ignoring nulls, zeros, and negatives) -- the burden-index
+ * legend's 5 color bands only ever describe the underserved half of NTAs;
+ * the rest get the bottom band's color instead of diluting the gradient
+ * the way including them in an ordinary quantile split would.
+ */
+export function positiveQuantileBinEdges(values: (number | null | undefined)[]): number[] {
+  const positive = values
+    .filter((v): v is number => typeof v === "number" && !Number.isNaN(v) && v > 0)
+    .sort((a, b) => a - b);
+  if (positive.length === 0) return [0, 0, 0, 0, 0, 0];
+
+  const edges = [positive[0]];
+  for (let i = 1; i <= 5; i++) {
+    const idx = Math.min(positive.length - 1, Math.floor((i / 5) * positive.length) - (i === 5 ? 1 : 0));
+    edges.push(positive[Math.max(0, idx)]);
+  }
+  return edges;
+}
+
+/**
+ * Equal-WIDTH bin edges: 5 even divisions of [0, max positive value] --
+ * an experiment for soccer only (see explore/page.tsx), to compare against
+ * the equal-count quantile version above. Per project owner instruction,
+ * 2026-09-29.
+ */
+export function equalWidthPositiveBinEdges(values: (number | null | undefined)[]): number[] {
+  const positive = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v) && v > 0);
+  if (positive.length === 0) return [0, 0, 0, 0, 0, 0];
+
+  const max = Math.max(...positive);
+  const edges = [0];
+  for (let i = 1; i <= 5; i++) edges.push((max * i) / 5);
+  return edges;
+}
+
+function burdenBandIndex(value: number, positiveBinEdges: number[]): number {
+  for (let i = 0; i < BURDEN_BIN_COLORS.length; i++) {
+    const upper = positiveBinEdges[i + 1];
+    const isLastBin = i === BURDEN_BIN_COLORS.length - 1;
+    if (value <= upper || isLastBin) return i;
+  }
+  return BURDEN_BIN_COLORS.length - 1;
+}
+
+export function colorForBurdenValue(value: number | null | undefined, positiveBinEdges: number[]): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return NO_DATA_COLOR;
+  if (value <= 0) return BURDEN_BIN_COLORS[0];
+  return BURDEN_BIN_COLORS[burdenBandIndex(value, positiveBinEdges)];
+}
+
+export function burdenBandLabel(value: number | null | undefined, positiveBinEdges: number[]): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "No data";
+  if (value <= 0) return BURDEN_BAND_LABELS[0];
+  return BURDEN_BAND_LABELS[burdenBandIndex(value, positiveBinEdges)];
 }

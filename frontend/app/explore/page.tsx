@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES } from "@/lib/selectionContext";
-import { PERCENT_BIN_EDGES, quantileBinEdges } from "@/lib/colorScale";
+import { PERCENT_BIN_EDGES, positiveQuantileBinEdges } from "@/lib/colorScale";
 import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 import { withBasePath } from "@/lib/basePath";
@@ -36,11 +36,11 @@ function formatTooltipLines(
     return [name, populationLine, categoryLine];
   }
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType;
-  const burdenIndex = properties[`burden_index_${sportType}`];
-  const burdenLine =
-    typeof burdenIndex === "number"
-      ? `${sportLabel} access burden index: ${Math.round(burdenIndex).toLocaleString()}`
-      : `${sportLabel} access burden index: No data`;
+  const burdenIndex = properties[`burden_index_${sportType}`] as number | null | undefined;
+  // Exact raw score -- the map legend colors by percentile band
+  // (colorForBurdenValue, via burdenBinEdges below), but the tooltip shows
+  // the precise number. Per project owner instruction, 2026-09-29.
+  const burdenLine = `${sportLabel} access burden index: ${typeof burdenIndex === "number" ? burdenIndex.toFixed(1) : "No data"}`;
   return [name, burdenLine];
 }
 
@@ -295,7 +295,10 @@ export default function ExplorePage() {
       .then((data: GeoJSON.FeatureCollection) => {
         if (cancelled) return;
         const values = data.features.map((f) => f.properties?.[valueProperty] as number | null | undefined);
-        setBurdenBinEdges(quantileBinEdges(values));
+        // Equal-COUNT (quantile/percentile) bins for every sport, including
+        // soccer -- the equal-WIDTH experiment was reverted. Per project
+        // owner instruction, 2026-09-29.
+        setBurdenBinEdges(positiveQuantileBinEdges(values));
       });
     return () => {
       cancelled = true;
@@ -366,6 +369,7 @@ export default function ExplorePage() {
             geojsonUrl={withBasePath("/data/burden_index.geojson")}
             valueProperty={valueProperty}
             binEdges={burdenBinEdges}
+            colorMode="positiveQuantile"
             onMapReady={handleMapReady}
             onFeatureIdsReady={handleFeatureIdsReady}
             onHover={handleHover}

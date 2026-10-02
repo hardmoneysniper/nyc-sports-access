@@ -68,7 +68,11 @@ def compute_burden_scores(df: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict]
     df["predicted_travel_time"] = intercept + slope * df["log_density"]
     df["residual"] = df["travel_time_soccer"] - df["predicted_travel_time"]
     df["excess_residual"] = df["residual"].clip(lower=0)
-    df["burden_score"] = df["excess_residual"] * df["total_population"]
+    # Population in units of 10,000 residents -- a pure display-scale
+    # choice (dividing every NTA's weight by the same constant changes
+    # nothing about the ranking, only how large the numbers look). Per
+    # project owner instruction, 2026-09-29.
+    df["burden_score"] = df["excess_residual"] * (df["total_population"] / 10_000)
 
     fit_stats = {
         "n": len(df),
