@@ -42,19 +42,19 @@ export function binLabel(binEdges: number[], index: number, suffix = ""): string
   return `${lower.toFixed(1)}–${upper.toFixed(1)}${suffix}`;
 }
 
-// --- Burden-index map only (green=low burden/good -> red=high burden/bad,
-// per project owner instruction, 2026-09-29). burden_index is already
-// floored at 0 by export_burden_index() (residual.clip(lower=0)), so it
-// never holds negative values -- NTAs at or below 0 ("no excess burden")
-// share the SAME green as the bottom 20th-percentile band, not a separate
-// shade (a separate pale green was tried and reported confusable with it).
-// Kept separate from BIN_COLORS/colorForValue/quantileBinEdges above so
-// demographics (where 0% is a normal, meaningful value, not a special
-// case) is completely unaffected. ---
+// --- Burden-index map only. burden_index is already floored at 0 by
+// export_burden_index() (residual.clip(lower=0)), so it never holds
+// negative values -- NTAs at or below 0 ("no excess burden") share the
+// SAME color as the bottom 20th-percentile band, not a separate shade (a
+// separate pale shade was tried and reported confusable with it). Kept
+// separate from colorForValue/quantileBinEdges above so demographics
+// (where 0% is a normal, meaningful value, not a special case) is
+// completely unaffected, even though the colors are now the same ramp. ---
 
-// Green (good) -> yellow -> orange -> red -> dark red (worst), per project
-// owner instruction, 2026-09-29.
-export const BURDEN_BIN_COLORS = ["#1a9641", "#ffeb3b", "#fb8c00", "#e53935", "#8b0000"];
+// Same blue ramp as the demographics map (BIN_COLORS), per project owner
+// instruction, 2026-09-29 -- reusing it directly (not a copy) so the two
+// never drift apart.
+export const BURDEN_BIN_COLORS = BIN_COLORS;
 // "Nth percentile" (the band's upper cutoff), not a "low-high" range --
 // per project owner instruction, 2026-09-29.
 export const BURDEN_BAND_LABELS = ["20th percentile", "40th percentile", "60th percentile", "80th percentile", "100th percentile"];

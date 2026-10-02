@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 // Left navigation rail for the map page only, per 1B.png (design reference
@@ -129,10 +129,16 @@ function SidebarNavItem({
 }
 
 export default function MapPageSidebar() {
-  // "data" (this map page) is the current page; "about" links back to the
-  // landing page; "methodology" links to the methodology page. Per
-  // project owner instruction, 2026-09-29.
-  const [activeTab, setActiveTab] = useState<NavId>("data");
+  // Now rendered on more than one route (the map page and the methodology
+  // page), so "active" has to reflect the actual current page, not a
+  // hardcoded default -- a fixed "data" default would show Data as active
+  // even while sitting on /methodology. "About" has no real destination
+  // yet, so it stays a same-page dummy toggle layered on top of whichever
+  // route tab is current. Per project owner instruction, 2026-10-02.
+  const pathname = usePathname();
+  const routeTab: NavId = pathname?.startsWith("/methodology") ? "methodology" : "data";
+  const [aboutActive, setAboutActive] = useState(false);
+  const activeTab: NavId = aboutActive ? "about" : routeTab;
 
   return (
     <>
@@ -154,7 +160,8 @@ export default function MapPageSidebar() {
           label="Data"
           active={activeTab === "data"}
           padding="54px 8px"
-          onClick={() => setActiveTab("data")}
+          href="/explore"
+          onClick={() => setAboutActive(false)}
         />
         <div style={{ flex: 1 }} />
         <SidebarNavItem
@@ -162,6 +169,7 @@ export default function MapPageSidebar() {
           active={activeTab === "about"}
           padding="30px 8px"
           href="/"
+          onClick={() => setAboutActive(true)}
         />
         <div style={{ flex: "0 0 56px" }} />
         <SidebarNavItem
@@ -169,19 +177,21 @@ export default function MapPageSidebar() {
           active={activeTab === "methodology"}
           padding="30px 8px"
           href="/methodology"
+          onClick={() => setAboutActive(false)}
         />
         <div style={{ flex: "0 0 48px" }} />
       </nav>
       <button
         type="button"
+        disabled={routeTab === "methodology"}
         style={{
           position: "absolute",
           top: 0,
           left: SIDEBAR_WIDTH,
           zIndex: 1200,
           background: "#000",
-          color: "#fff",
-          border: "1px solid #fff",
+          color: routeTab === "methodology" ? "#666" : "#fff",
+          border: `1px solid ${routeTab === "methodology" ? "#555" : "#fff"}`,
           borderRadius: 2,
           padding: "8px 12px",
           fontSize: SHOW_MENU_FONT_SIZE,
@@ -189,7 +199,7 @@ export default function MapPageSidebar() {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          cursor: "pointer",
+          cursor: routeTab === "methodology" ? "not-allowed" : "pointer",
         }}
       >
         Show Menu

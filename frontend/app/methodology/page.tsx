@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
+import MapPageSidebar from "@/components/MapPageSidebar";
 
 // Linked from the map page's sidebar "Methodology" item. Content is the
 // Soccer Access Burden Score writeup (see
@@ -45,7 +46,7 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Reading the map",
-    body: "The map applies this same method to all 21 sports in the dashboard. Each sport's underserved neighborhoods are split into five equal groups, colored from green to dark red, so that dark red marks the 20 percent of underserved neighborhoods with the highest burden. Neighborhoods with a score of zero share the green color, since they are not part of the underserved group. Hovering over a neighborhood shows its exact score, although the color, which reflects its rank, is the more meaningful thing to look at.",
+    body: "The map applies this same method to all 21 sports in the dashboard. Each sport's underserved neighborhoods are split into five equal groups, colored on a light-to-dark blue scale, so that the darkest blue marks the 20 percent of underserved neighborhoods with the highest burden. Neighborhoods with a score of zero share the lightest color, since they are not part of the underserved group. Hovering over a neighborhood shows its exact score, although the color, which reflects its rank, is the more meaningful thing to look at.",
   },
 ];
 
@@ -131,32 +132,43 @@ export default function MethodologyPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", width: "100%", background: "#000", color: "#fff", padding: "64px 80px 120px" }}>
-      <h1 style={{ fontSize: 56, fontWeight: 700, textAlign: "left", margin: 0 }}>Methodology</h1>
+    <div style={{ position: "relative", height: "100vh", width: "100%", overflow: "hidden", display: "flex", background: "#000" }}>
+      <MapPageSidebar />
+      <div
+        style={{
+          flex: 1,
+          height: "100%",
+          overflowY: "auto",
+          color: "#fff",
+          padding: "64px 80px 120px",
+        }}
+      >
+        <h1 style={{ fontSize: 56, fontWeight: 700, textAlign: "left", margin: 0 }}>Methodology</h1>
 
-      <h2 style={{ fontSize: 26, fontWeight: 600, marginTop: 56, marginBottom: 20 }}>Soccer Access Burden Score</h2>
-      <p style={{ fontSize: 17, lineHeight: 1.65, color: "#ccc", maxWidth: 760, marginBottom: 20 }}>
-        Not every neighborhood should be expected to have the exact same travel time to a sports facility. New York
-        neighborhoods vary greatly in density, size, and urban form. Denser neighborhoods tend to sit closer to more
-        transit and more destinations, so their residents usually reach a facility faster than residents of
-        neighborhoods that are more spread out. For this reason, we first estimate the travel time a neighborhood
-        would typically have given its density, and then compare it with the actual travel time its residents face.
-        A neighborhood is flagged only when its access is unusually poor for its density, which is different from
-        simply being far from the city average.
-      </p>
-      <p style={{ fontSize: 17, lineHeight: 1.65, color: "#ccc", maxWidth: 760 }}>
-        Our Access Burden Index helps identify neighborhoods where access to a particular sport is worse than we
-        would expect, especially when that gap affects a large number of residents. To calculate it, we take the
-        extra travel time a neighborhood has beyond its expected travel time and multiply it by the
-        neighborhood&apos;s population, so that a gap affecting 100,000 people ranks higher than the same gap affecting 10,000.
-        Neighborhoods doing as well as or better than expected receive a score of zero. The score itself has no
-        real-world unit, which is why the ranking is what should be read and cited.
-      </p>
+        <h2 style={{ fontSize: 26, fontWeight: 600, marginTop: 56, marginBottom: 20 }}>Soccer Access Burden Score</h2>
+        <p style={{ fontSize: 17, lineHeight: 1.65, color: "#ccc", maxWidth: 760, marginBottom: 20 }}>
+          Not every neighborhood should be expected to have the exact same travel time to a sports facility. New York
+          neighborhoods vary greatly in density, size, and urban form. Denser neighborhoods tend to sit closer to more
+          transit and more destinations, so their residents usually reach a facility faster than residents of
+          neighborhoods that are more spread out. For this reason, we first estimate the travel time a neighborhood
+          would typically have given its density, and then compare it with the actual travel time its residents face.
+          A neighborhood is flagged only when its access is unusually poor for its density, which is different from
+          simply being far from the city average.
+        </p>
+        <p style={{ fontSize: 17, lineHeight: 1.65, color: "#ccc", maxWidth: 760 }}>
+          Our Access Burden Index helps identify neighborhoods where access to a particular sport is worse than we
+          would expect, especially when that gap affects a large number of residents. To calculate it, we take the
+          extra travel time a neighborhood has beyond its expected travel time and multiply it by the
+          neighborhood&apos;s population, so that a gap affecting 100,000 people ranks higher than the same gap affecting 10,000.
+          Neighborhoods doing as well as or better than expected receive a score of zero. The score itself has no
+          real-world unit, which is why the ranking is what should be read and cited.
+        </p>
 
-      <div style={{ marginTop: 48, maxWidth: 760, borderTop: "1px solid #333" }}>
-        {SECTIONS.map((section, i) => (
-          <AccordionItem key={section.title} title={section.title} body={section.body} isOpen={openIndices.has(i)} onToggle={() => toggle(i)} />
-        ))}
+        <div style={{ marginTop: 48, maxWidth: 760, borderTop: "1px solid #333" }}>
+          {SECTIONS.map((section, i) => (
+            <AccordionItem key={section.title} title={section.title} body={section.body} isOpen={openIndices.has(i)} onToggle={() => toggle(i)} />
+          ))}
+        </div>
       </div>
     </div>
   );

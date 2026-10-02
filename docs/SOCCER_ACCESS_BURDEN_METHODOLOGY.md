@@ -91,7 +91,7 @@ Considered and rejected. `travel_time_soccer` is already a per-person (intensive
 
 **Bins**: 5 color bands, computed per sport from that sport's own positive `burden_index` values only (`positiveQuantileBinEdges`) — equal-count quintiles, so each band covers 20% of the underserved (positive-score) NTAs. NTAs at or below 0 are not spread across the gradient; they share the exact same color as the bottom band, since a zero-or-negative score means "not part of the underserved story" (§5, §7), not "a slightly milder version of it."
 
-**Colors**: green (`#1a9641`, ≤0 and 0–20th percentile) → yellow (`#ffeb3b`, 20–40th) → orange (`#fb8c00`, 40–60th) → red (`#e53935`, 60–80th) → dark red (`#8b0000`, 80–100th).
+**Colors**: the same light-to-dark blue ramp used by the demographics map (`BIN_COLORS` in `colorScale.ts`, reused directly, not copied) — `#bdd7e7` (≤0 and 0–20th percentile) → `#6baed6` (20–40th) → `#3182bd` (40–60th) → `#08519c` (60–80th) → `#08306b` (80–100th). An earlier green-to-dark-red version was tried and reverted (revised 2026-10-02).
 
 **Legend labels**: "Nth percentile" (20th/40th/60th/80th/100th) — the band's upper cutoff among that sport's positive-scored NTAs, not a value range and not a raw number.
 
