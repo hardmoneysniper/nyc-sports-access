@@ -181,30 +181,31 @@ export default function MapPageSidebar() {
         />
         <div style={{ flex: "0 0 48px" }} />
       </nav>
-      <button
-        type="button"
-        disabled={routeTab === "methodology"}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: SIDEBAR_WIDTH,
-          zIndex: 1200,
-          background: "#000",
-          color: routeTab === "methodology" ? "#666" : "#fff",
-          border: `1px solid ${routeTab === "methodology" ? "#555" : "#fff"}`,
-          borderRadius: 2,
-          padding: "8px 12px",
-          fontSize: SHOW_MENU_FONT_SIZE,
-          fontWeight: 600,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          cursor: routeTab === "methodology" ? "not-allowed" : "pointer",
-        }}
-      >
-        Show Menu
-        <span aria-hidden>{"›"}</span>
-      </button>
+      {routeTab !== "methodology" && (
+        <button
+          type="button"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: SIDEBAR_WIDTH,
+            zIndex: 1200,
+            background: "#000",
+            color: "#fff",
+            border: "1px solid #fff",
+            borderRadius: 2,
+            padding: "8px 12px",
+            fontSize: SHOW_MENU_FONT_SIZE,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            cursor: "pointer",
+          }}
+        >
+          Show Menu
+          <span aria-hidden>{"›"}</span>
+        </button>
+      )}
     </>
   );
 }
