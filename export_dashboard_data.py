@@ -57,9 +57,23 @@ DEMOGRAPHIC_COLUMNS = [
 ]
 
 
+def _nta_density(gdf: gpd.GeoDataFrame) -> pd.Series:
+    """People per square mile, per NTA -- EPSG:2263 (feet) is this
+    pipeline's standard projected CRS (see docs/METHODOLOGY.md).
+    Reprojects only for this area computation, never mutates gdf's own
+    (geographic) geometry. Shared by export_demographics() (so the
+    methodology page's density-vs-population explainer can read it
+    straight off demographics.geojson) and export_burden_index() (the
+    regression predictor), so the two never compute it two different ways.
+    """
+    area_sqmi = gdf.to_crs(config.CRS_PROJECTED).geometry.area / (5280**2)
+    return gdf["total_population"] / area_sqmi
+
+
 def export_demographics():
     nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")
-    trimmed = nta[["NTA2020", "NTAName", "total_population"] + DEMOGRAPHIC_COLUMNS + ["geometry"]]
+    nta["density"] = _nta_density(nta)
+    trimmed = nta[["NTA2020", "NTAName", "total_population", "density"] + DEMOGRAPHIC_COLUMNS + ["geometry"]]
     output_path = OUTPUT_DIR / "demographics.geojson"
     trimmed.to_file(output_path, driver="GeoJSON")
     print(f"Wrote {output_path} ({len(trimmed)} NTAs)")
@@ -127,12 +141,7 @@ def export_burden_index():
         member_columns = [f"travel_time_{m}" for m in members]
         merged[f"travel_time_{group}"] = merged[member_columns].min(axis=1)
 
-    # EPSG:2263 (feet) is this pipeline's standard projected CRS (see
-    # docs/METHODOLOGY.md) -- reprojecting only for this area computation,
-    # not mutating merged's own (geographic) geometry used for output.
-    area_sqmi = merged.to_crs(config.CRS_PROJECTED).geometry.area / (5280**2)
-    density = merged["total_population"] / area_sqmi
-    log_density = np.log(density.clip(lower=1e-6))
+    log_density = np.log(_nta_density(merged).clip(lower=1e-6))
     has_population = merged["total_population"] > 0
 
     burden_columns = []

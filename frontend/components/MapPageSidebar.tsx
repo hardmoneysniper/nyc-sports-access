@@ -3,19 +3,21 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-// Left navigation rail for the map page only, per 1B.png (design reference
-// -- map/control colors in that mock are not part of this scope, only the
-// rail itself). "Show Menu" is a dummy button for now (no menu wired up
-// yet -- that's second phase, along with a real "About" destination).
-// Per project owner instruction, 2026-09-28.
-// Sized off the design reference (1B.png), scaled to 1.5x the "Show Menu"
-// button's font size, with the rail narrowed to match. Per project owner
+// Left navigation rail, shared by every page (map + methodology) -- per
+// 1B.png (design reference -- map/control colors in that mock are not
+// part of this scope, only the rail itself). Per project owner
 // instruction, 2026-09-28.
-const SHOW_MENU_FONT_SIZE = 13;
-const MENU_FONT_SIZE = SHOW_MENU_FONT_SIZE * 1.5;
+// The "Show Menu"/"Hide Menu" toggle used to live here, attached to the
+// rail's right edge -- moved to attach to the methodology catalog panel's
+// own right edge instead (MethodologyMenuPanel), since the button is
+// conceptually part of the popup menu, not the rail. Per project owner
+// instruction, 2026-10-05.
+// Sized off the design reference (1B.png). Per project owner instruction,
+// 2026-09-28.
+const MENU_FONT_SIZE = 13 * 1.5;
 // ~28% thinner than the previous 64px rail. Per project owner instruction,
 // 2026-09-28.
-const SIDEBAR_WIDTH = 46;
+export const SIDEBAR_WIDTH = 46;
 const ANIMATION_MS = 320;
 
 type NavId = "data" | "about" | "methodology";
@@ -129,83 +131,50 @@ function SidebarNavItem({
 }
 
 export default function MapPageSidebar() {
-  // Now rendered on more than one route (the map page and the methodology
-  // page), so "active" has to reflect the actual current page, not a
-  // hardcoded default -- a fixed "data" default would show Data as active
-  // even while sitting on /methodology. "About" has no real destination
-  // yet, so it stays a same-page dummy toggle layered on top of whichever
-  // route tab is current. Per project owner instruction, 2026-10-02.
   const pathname = usePathname();
   const routeTab: NavId = pathname?.startsWith("/methodology") ? "methodology" : "data";
   const [aboutActive, setAboutActive] = useState(false);
   const activeTab: NavId = aboutActive ? "about" : routeTab;
 
   return (
-    <>
-      <nav
-        style={{
-          flex: `0 0 ${SIDEBAR_WIDTH}px`,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          background: "#000",
-          // Static divider -- lives on the <nav> container itself, not
-          // inside any animated item, so it never moves regardless of
-          // active/hover state. Per project owner instruction, 2026-09-28.
-          borderRight: "3px solid #fff",
-        }}
-      >
-        <SidebarNavItem
-          label="Data"
-          active={activeTab === "data"}
-          padding="54px 8px"
-          href="/explore"
-          onClick={() => setAboutActive(false)}
-        />
-        <div style={{ flex: 1 }} />
-        <SidebarNavItem
-          label="About"
-          active={activeTab === "about"}
-          padding="30px 8px"
-          href="/"
-          onClick={() => setAboutActive(true)}
-        />
-        <div style={{ flex: "0 0 56px" }} />
-        <SidebarNavItem
-          label="Methodology"
-          active={activeTab === "methodology"}
-          padding="30px 8px"
-          href="/methodology"
-          onClick={() => setAboutActive(false)}
-        />
-        <div style={{ flex: "0 0 48px" }} />
-      </nav>
-      {routeTab !== "methodology" && (
-        <button
-          type="button"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: SIDEBAR_WIDTH,
-            zIndex: 1200,
-            background: "#000",
-            color: "#fff",
-            border: "1px solid #fff",
-            borderRadius: 2,
-            padding: "8px 12px",
-            fontSize: SHOW_MENU_FONT_SIZE,
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            cursor: "pointer",
-          }}
-        >
-          Show Menu
-          <span aria-hidden>{"›"}</span>
-        </button>
-      )}
-    </>
+    <nav
+      style={{
+        flex: `0 0 ${SIDEBAR_WIDTH}px`,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        background: "#000",
+        // Static divider -- lives on the <nav> container itself, not
+        // inside any animated item, so it never moves regardless of
+        // active/hover state. Per project owner instruction, 2026-09-28.
+        borderRight: "3px solid #fff",
+      }}
+    >
+      <SidebarNavItem
+        label="Data"
+        active={activeTab === "data"}
+        padding="54px 8px"
+        href="/explore"
+        onClick={() => setAboutActive(false)}
+      />
+      <div style={{ flex: 1 }} />
+      <SidebarNavItem
+        label="About"
+        active={activeTab === "about"}
+        padding="30px 8px"
+        href="/"
+        onClick={() => setAboutActive(true)}
+      />
+      <div style={{ flex: "0 0 56px" }} />
+      <SidebarNavItem
+        label="Methodology"
+        active={activeTab === "methodology"}
+        padding="30px 8px"
+        href="/methodology"
+        onClick={() => setAboutActive(false)}
+      />
+      <div style={{ flex: "0 0 48px" }} />
+    </nav>
   );
 }
