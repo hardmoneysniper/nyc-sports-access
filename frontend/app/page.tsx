@@ -225,7 +225,7 @@ function StorySection({ headline, body, isLast }: { headline: string; body: stri
                 textAlign: "center",
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>EXPLORE NYC</span>
+              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>EXPLORE NYC&apos;S SPORTS ACCESS</span>
             </button>
           </Link>
         )}
