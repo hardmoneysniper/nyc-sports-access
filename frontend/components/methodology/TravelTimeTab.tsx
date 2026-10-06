@@ -9,13 +9,14 @@ import { boundsOf, exteriorRingOf, makeCenteredProjector, polygonCentroid, type 
 // Illustrative worked example -- same neighborhood as the Burden Score
 // tab, for continuity. The per-route minutes shown here come from the
 // evening-window route detail (the only window with full segment-by-
-// segment geometry saved); the final NTA-average scene instead uses the
-// real weekday-frequency-weighted value from travel_time.geojson, since
-// that's the actual figure the dashboard shows elsewhere. Per project
-// owner instruction, 2026-10-05.
+// segment geometry saved).
 const ELMHURST_ID = "QN0401";
-const SPORT = "soccer";
-const WINDOW_NAME = "weekday_evening";
+// The real weekday-frequency-weighted figure from travel_time.geojson
+// (same value export_burden_index() and the Burden Score tab use) --
+// hardcoded rather than fetched: the full citywide file is 5.4MB just to
+// read this one NTA's one number. Per project owner instruction,
+// 2026-10-06 ("the travel time maps are loaded pretty slowly").
+const NTA_AVERAGE_MINUTES = 28.0758283409571;
 // One fixed size for every map scene (tract-only / +facility / +routes) --
 // a size or viewBox that differed scene-to-scene made the map appear to
 // jump/zoom as the user scrolled between them. Reported live, 2026-10-05.
@@ -41,7 +42,6 @@ function useTravelTimeData() {
   // synthetic grid. Per project owner instruction, 2026-10-05.
   const [roads, setRoads] = useState<LngLat[][] | null>(null);
   const [facilityPoints, setFacilityPoints] = useState<Map<string, LngLat> | null>(null);
-  const [ntaAverage, setNtaAverage] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,16 +57,18 @@ function useTravelTimeData() {
         setTracts(parsed);
       });
 
-    fetch(withBasePath(`/data/routes/${ELMHURST_ID}.geojson`))
+    // Pre-filtered to soccer/weekday_evening by
+    // scripts/extract_elmhurst_soccer_routes.py (85KB, 62 features) --
+    // the full routes/QN0401.geojson is 6.1MB covering every sport and
+    // both time windows, and this tab only ever needed this one slice of
+    // it. Per project owner instruction, 2026-10-06.
+    fetch(withBasePath("/data/routes/QN0401_soccer_weekday_evening.geojson"))
       .then((r) => r.json())
       .then((d: GeoJSON.FeatureCollection) => {
         if (cancelled) return;
 
-        const relevant = d.features.filter(
-          (f) => f.properties?.sport_type === SPORT && f.properties?.window_name === WINDOW_NAME
-        );
         const byKey = new Map<string, GeoJSON.Feature[]>();
-        for (const f of relevant) {
+        for (const f of d.features) {
           const key = `${f.properties?.GEOID}__${f.properties?.option}`;
           if (!byKey.has(key)) byKey.set(key, []);
           byKey.get(key)!.push(f);
@@ -115,21 +117,12 @@ function useTravelTimeData() {
         setFacilityPoints(map);
       });
 
-    fetch(withBasePath("/data/travel_time.geojson"))
-      .then((r) => r.json())
-      .then((d: GeoJSON.FeatureCollection) => {
-        if (cancelled) return;
-        const f = d.features.find((x) => x.properties?.NTA2020 === ELMHURST_ID);
-        const t = f?.properties?.travel_time_soccer as number | undefined;
-        if (typeof t === "number") setNtaAverage(t);
-      });
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return { tracts, routes, roads, facilityPoints, ntaAverage };
+  return { tracts, routes, roads, facilityPoints };
 }
 
 // Real street geometry (scripts/extract_elmhurst_roads.py), projected with
@@ -160,7 +153,7 @@ function RoadNetworkLayer({ roads, project }: { roads: LngLat[][]; project: (p: 
 }
 
 export default function TravelTimeTab() {
-  const { tracts, routes, roads, facilityPoints, ntaAverage } = useTravelTimeData();
+  const { tracts, routes, roads, facilityPoints } = useTravelTimeData();
   const [sceneIndex, setSceneIndex] = useState(0);
 
   const facilityCoords = useMemo(() => {
@@ -186,7 +179,7 @@ export default function TravelTimeTab() {
     [bounds]
   );
 
-  const ready = tracts && routes && roads && project && ntaAverage !== null;
+  const ready = tracts && routes && roads && project;
   const routesActive = sceneIndex === 2;
 
   // Shared between the interactive route-reveal scene and the final
@@ -253,11 +246,11 @@ export default function TravelTimeTab() {
       {!ready && <p style={{ color: "#777", marginTop: 40 }}>Loading data…</p>}
 
       {ready && (
-        <div style={{ marginTop: 64 }}>
+        <div style={{ marginTop: 24 }}>
         <PinnedScrollSequence
           activeIndex={sceneIndex}
           onActivate={setSceneIndex}
-          stickyHeight={MAP_H + 100}
+          topOffset={64}
           scenes={[
             <CenteredDiagram
               key="s0"
@@ -343,9 +336,12 @@ export default function TravelTimeTab() {
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 56, fontWeight: 700 }}>{ntaAverage!.toFixed(1)} min</div>
+                  <div style={{ fontSize: 56, fontWeight: 700 }}>{NTA_AVERAGE_MINUTES.toFixed(1)} min</div>
                   <p style={{ marginTop: 12, fontSize: 15, color: "#ccc" }}>
                     Elmhurst&apos;s average soccer travel time, weighted by each tract&apos;s population.
+                  </p>
+                  <p style={{ marginTop: 12, fontSize: 15, color: "#ccc" }}>
+                    Every neighborhood&apos;s travel time, for every sport, is calculated the same way.
                   </p>
                 </div>
               </div>
@@ -353,12 +349,6 @@ export default function TravelTimeTab() {
           ]}
         />
         </div>
-      )}
-
-      {ready && (
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc", marginTop: 16, position: "relative", zIndex: 50 }}>
-          Every neighborhood&apos;s travel time, for every sport, is calculated the same way.
-        </p>
       )}
     </div>
   );

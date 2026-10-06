@@ -40,12 +40,18 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Leftover exported data from the deferred Leaflet NTA-detail-view feature
-# (tract/route/facility drill-down) -- the current app only ever fetches
-# demographics.geojson and travel_time.geojson (confirmed via grep,
-# 2026-09-27). These total ~566MB and aren't used by anything live, so
-# they don't belong in the repo.
-/public/data/routes/
-/public/data/tracts/
-/public/data/facilities/
+# Exported per-NTA drill-down data (tract/route/facility) -- ~566MB total,
+# covering all 262 NTAs, but the methodology page's Travel Time tab only
+# ever needs Elmhurst's (QN0401) slice of it for its one worked example.
+# Ignore the directories wholesale, then un-ignore just those specific
+# files, so the ones actually fetched at runtime still deploy. Per project
+# owner instruction, 2026-10-06 (found during a "why is this slow/missing
+# in production" check -- the whole directories were gitignored with a
+# stale comment claiming nothing live used them).
+/public/data/routes/*
+!/public/data/routes/QN0401_soccer_weekday_evening.geojson
+/public/data/tracts/*
+!/public/data/tracts/QN0401.geojson
+/public/data/facilities/*
+!/public/data/facilities/soccer.geojson
 /public/data/nta_boundaries.geojson

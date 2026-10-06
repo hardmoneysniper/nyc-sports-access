@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { withBasePath } from "@/lib/basePath";
 import ScatterPlot, { type ScatterPoint } from "./ScatterPlot";
 import PinnedScrollSequence from "./PinnedScrollSequence";
@@ -28,6 +29,13 @@ const CHART_SIZE = 520;
 // its native size keeps that overflow modest in real screen pixels,
 // comfortably inside the page's own margin around it.
 const DIAGRAM_MAX_WIDTH = CHART_SIZE;
+// Shared height for every scene in the scroll sequence -- only the first
+// scene's own natural height actually sets this (the rest are
+// position:absolute, sized to match it), so it has to be tall enough for
+// the LARGEST scene's content (the multi-paragraph calculation walkthrough
+// in the last scene), or that scene's text would overflow past the box
+// the chart scenes defined.
+const MIN_SCENE_HEIGHT = 1080;
 
 type NtaDatum = { id: string; name: string; density: number; population: number; travelTime: number };
 
@@ -76,27 +84,47 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NtaComparisonRow({
-  name,
-  population,
-  density,
-  travelTime,
-}: {
-  name: string;
-  population: string;
-  density: string;
-  travelTime: string;
-}) {
+// Generalized over a list of {label,value} stats -- reused for both the
+// density-vs-population example and the gap-vs-population example below,
+// same card format for both. Per project owner instruction, 2026-10-06.
+function ComparisonRow({ name, stats }: { name: string; stats: { label: string; value: string }[] }) {
   return (
     <div>
       <div style={{ fontWeight: 700, marginBottom: 10 }}>{name}</div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <StatCard label="Population" value={population} />
-        <StatCard label="Density (per sq mi)" value={density} />
-        <StatCard label="Soccer travel time" value={travelTime} />
+        {stats.map((s) => (
+          <StatCard key={s.label} label={s.label} value={s.value} />
+        ))}
       </div>
     </div>
   );
+}
+
+// Vertically centers each scene's content within the shared scene-box
+// height (see MIN_SCENE_HEIGHT) -- only the first scene actually sets that
+// height (via minHeight), the rest just fill and center within whatever
+// it ends up being.
+function SceneFrame({ children, minHeight }: { children: ReactNode; minHeight?: number }) {
+  return (
+    <div style={{ minHeight, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {children}
+    </div>
+  );
+}
+
+// Plain body font (not monospace) and a left border accent instead of a
+// centered bordered box -- left-aligned with the rest of the page's
+// content, not a separate floating card. Reported live, 2026-10-06.
+function FormulaBlock({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ borderLeft: "3px solid #444", paddingLeft: 16, margin: "20px 0", fontSize: 15, lineHeight: 1.9 }}>
+      {children}
+    </div>
+  );
+}
+
+function Prose({ children }: { children: ReactNode }) {
+  return <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>{children}</p>;
 }
 
 export default function BurdenScoreTab() {
@@ -143,56 +171,62 @@ export default function BurdenScoreTab() {
 
       <section style={{ marginTop: 40 }}>
         <h2 style={{ fontSize: 22, fontWeight: 600 }}>What this measure is for</h2>
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>
+        <Prose>
           This measure finds New York City neighborhoods where getting to a sports facility takes longer than
           expected, and where that gap affects the most residents. The result is a ranked list of neighborhoods that
           can be flagged to policymakers.
-        </p>
-      </section>
-
-      <section style={{ marginTop: 32 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 600 }}>Why not just divide travel time by population?</h2>
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>
-          Travel time already describes what a typical resident experiences, and it doesn&apos;t change depending on
-          how many people live nearby. Dividing it by population would make large neighborhoods look better off
-          simply because they&apos;re large, which would hide exactly the underserved places this measure is meant to
-          find.
-        </p>
-      </section>
-
-      <section style={{ marginTop: 32 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 600 }}>Density, not population</h2>
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>
-          Not every neighborhood should be expected to have the same travel time to a sports facility. Denser
-          neighborhoods tend to sit closer to more transit and more destinations, so we use density, not population,
-          to estimate how long a trip should take.
-        </p>
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>
-          East Midtown-Turtle Bay and New Springville-Willowbrook-Bulls Head-Travis have almost the same population,
-          about 42,000 residents each. But East Midtown is about 16 times denser. Population alone could not have
-          predicted the difference in how long it takes their residents to reach a soccer field. Density does.
-        </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 20 }}>
-          <NtaComparisonRow name="East Midtown-Turtle Bay" population="42,046" density="89,216" travelTime="16.2 min" />
-          <NtaComparisonRow
-            name="New Springville-Willowbrook-Bulls Head-Travis"
-            population="42,601"
-            density="5,672"
-            travelTime="38.5 min"
-          />
-        </div>
+        </Prose>
       </section>
 
       <section style={{ marginTop: 32 }}>
         <h2 style={{ fontSize: 22, fontWeight: 600 }}>Building an expectation</h2>
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>
+        <Prose>
           For every sport, we compare each neighborhood&apos;s travel time to its population density across the whole
           city. We take the logarithm of density because density varies enormously across the city, from a few
           hundred people per square mile to over 100,000, and the log scale keeps a handful of extremely dense
           neighborhoods from dominating the pattern. Fitting a line through this relationship gives an expected
-          travel time for a neighborhood of any density. The scroll below walks through the process for one
-          neighborhood, Elmhurst, using soccer as the example sport.
-        </p>
+          travel time to an NTA&apos;s nearest sports facility, for a neighborhood of any density. The scroll below
+          walks through the process for one neighborhood, Elmhurst, using soccer as the example sport.
+        </Prose>
+      </section>
+
+      {/* Right after "Building an expectation" and before the diagrams --
+          explains why density, not population, is what sets the
+          expectation the scroll below calculates. Per project owner
+          instruction, 2026-10-06. */}
+      <section style={{ marginTop: 32 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 600 }}>Why Density/Travel Time</h2>
+        <Prose>
+          Our hypothesis is that denser neighborhoods do not necessarily have better sports access, not that more
+          populous ones do. Population size on its own barely differs between the two NTAs below, so it cannot
+          explain why one has far worse access than the other. Density can, which is why density, not population,
+          sets the expectation this measure compares each neighborhood against.
+        </Prose>
+        <Prose>
+          A regression that predicts travel time from population alone gives East Midtown and New Springville almost
+          the same expected time, about 21.5 min each, since their populations are nearly equal. Their actual times
+          are 16.2 and 38.5 min: population explains almost none of that gap. Swapping in density instead predicts
+          18.1 min and 28.6 min, correctly showing the denser neighborhood with the shorter expected trip, far closer
+          to what actually happens.
+        </Prose>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 20 }}>
+          <ComparisonRow
+            name="East Midtown-Turtle Bay — Population: 42,046, Density: 89,216/sq mi"
+            stats={[
+              { label: "Predicted (population model)", value: "21.5 min" },
+              { label: "Predicted (density model)", value: "18.1 min" },
+              { label: "Actual soccer travel time", value: "16.2 min" },
+            ]}
+          />
+          <ComparisonRow
+            name="New Springville-Willowbrook-Bulls Head-Travis — Population: 42,601, Density: 5,672/sq mi"
+            stats={[
+              { label: "Predicted (population model)", value: "21.4 min" },
+              { label: "Predicted (density model)", value: "28.6 min" },
+              { label: "Actual soccer travel time", value: "38.5 min" },
+            ]}
+          />
+        </div>
       </section>
 
       {!data && <p style={{ color: "#777", marginTop: 40 }}>Loading data…</p>}
@@ -209,96 +243,136 @@ export default function BurdenScoreTab() {
         <PinnedScrollSequence
           activeIndex={sceneIndex}
           onActivate={setSceneIndex}
-          stickyHeight={CHART_SIZE + 60}
+          topOffset={64}
           scenes={[
-            <CenteredDiagram
-              key="s0"
-              maxWidth={DIAGRAM_MAX_WIDTH}
-              caption="Every neighborhood's soccer travel time, plotted against its population density."
-            >
-              <ScatterPlot {...commonChartProps} />
-            </CenteredDiagram>,
-
-            <CenteredDiagram
-              key="s1"
-              maxWidth={DIAGRAM_MAX_WIDTH}
-              caption="A fitted line gives the expected travel time at any density."
-            >
-              <ScatterPlot {...commonChartProps} fittedLine={{ slope: SLOPE, intercept: INTERCEPT }} formulaLabel={FORMULA_LABEL} />
-            </CenteredDiagram>,
-
-            <CenteredDiagram key="s2" maxWidth={DIAGRAM_MAX_WIDTH} caption="One neighborhood, Elmhurst, highlighted.">
-              <ScatterPlot
-                {...commonChartProps}
-                fittedLine={{ slope: SLOPE, intercept: INTERCEPT }}
-                formulaLabel={FORMULA_LABEL}
-                highlightedId={ELMHURST_ID}
-                highlightedLabel={elmhurstLabel}
-              />
-            </CenteredDiagram>,
-
-            <CenteredDiagram
-              key="s3"
-              maxWidth={DIAGRAM_MAX_WIDTH}
-              caption="Isolating Elmhurst's actual travel time."
-            >
-              <ScatterPlot
-                {...commonChartProps}
-                fittedLine={{ slope: SLOPE, intercept: INTERCEPT }}
-                formulaLabel={FORMULA_LABEL}
-                highlightedId={ELMHURST_ID}
-                highlightedLabel={elmhurstLabel}
-                isolateHighlighted
-              />
-            </CenteredDiagram>,
-
-            <CenteredDiagram
-              key="s4"
-              maxWidth={DIAGRAM_MAX_WIDTH}
-              caption="The hollow point is the expected travel time; the dashed line is the gap."
-            >
-              <ScatterPlot
-                {...commonChartProps}
-                fittedLine={{ slope: SLOPE, intercept: INTERCEPT }}
-                formulaLabel={FORMULA_LABEL}
-                highlightedId={ELMHURST_ID}
-                highlightedLabel={elmhurstLabel}
-                isolateHighlighted
-                showResidualFor={ELMHURST_ID}
-                expectedPointFor={ELMHURST_ID}
-                expectedLabel={[`Expected: ${predicted.toFixed(1)} min`, `Gap: ${residual.toFixed(1)} min`]}
-              />
-            </CenteredDiagram>,
-
-            <CenteredDiagram key="s5" widthPercent={80} maxWidth={560}>
-              <div
-                style={{
-                  border: "1px solid #333",
-                  padding: 24,
-                  fontFamily: "monospace",
-                  fontSize: 14,
-                  lineHeight: 1.9,
-                }}
+            <SceneFrame key="s0" minHeight={MIN_SCENE_HEIGHT}>
+              <CenteredDiagram
+                maxWidth={DIAGRAM_MAX_WIDTH}
+                caption="Every neighborhood's soccer travel time, plotted against its population density."
               >
-                <div>predicted = intercept + slope × log(density)</div>
-                <div style={{ marginBottom: 12 }}>predicted = 61.47 + (−3.80) × log(density)</div>
-                <div>density = {Math.round(elmhurst.density).toLocaleString()} people / sq mi</div>
-                <div>log(density) = {Math.log(elmhurst.density).toFixed(2)}</div>
-                <div style={{ marginTop: 12 }}>
-                  predicted = 61.47 − 3.80 × {Math.log(elmhurst.density).toFixed(2)} = {predicted.toFixed(1)} min
+                <ScatterPlot {...commonChartProps} />
+              </CenteredDiagram>
+            </SceneFrame>,
+
+            <SceneFrame key="s1">
+              <CenteredDiagram
+                maxWidth={DIAGRAM_MAX_WIDTH}
+                caption="A fitted line gives the expected travel time at any density."
+              >
+                <ScatterPlot {...commonChartProps} fittedLine={{ slope: SLOPE, intercept: INTERCEPT }} formulaLabel={FORMULA_LABEL} />
+              </CenteredDiagram>
+            </SceneFrame>,
+
+            <SceneFrame key="s2">
+              <CenteredDiagram maxWidth={DIAGRAM_MAX_WIDTH} caption="One neighborhood, Elmhurst, highlighted.">
+                <ScatterPlot
+                  {...commonChartProps}
+                  fittedLine={{ slope: SLOPE, intercept: INTERCEPT }}
+                  formulaLabel={FORMULA_LABEL}
+                  highlightedId={ELMHURST_ID}
+                  highlightedLabel={elmhurstLabel}
+                />
+              </CenteredDiagram>
+            </SceneFrame>,
+
+            <SceneFrame key="s3">
+              <CenteredDiagram maxWidth={DIAGRAM_MAX_WIDTH} caption="Isolating Elmhurst's actual travel time.">
+                <ScatterPlot
+                  {...commonChartProps}
+                  fittedLine={{ slope: SLOPE, intercept: INTERCEPT }}
+                  formulaLabel={FORMULA_LABEL}
+                  highlightedId={ELMHURST_ID}
+                  highlightedLabel={elmhurstLabel}
+                  isolateHighlighted
+                />
+              </CenteredDiagram>
+            </SceneFrame>,
+
+            <SceneFrame key="s4">
+              <CenteredDiagram
+                maxWidth={DIAGRAM_MAX_WIDTH}
+                caption="The hollow point is the expected travel time; the dashed line is the gap."
+              >
+                <ScatterPlot
+                  {...commonChartProps}
+                  fittedLine={{ slope: SLOPE, intercept: INTERCEPT }}
+                  formulaLabel={FORMULA_LABEL}
+                  highlightedId={ELMHURST_ID}
+                  highlightedLabel={elmhurstLabel}
+                  isolateHighlighted
+                  showResidualFor={ELMHURST_ID}
+                  expectedPointFor={ELMHURST_ID}
+                  expectedLabel={[`Expected: ${predicted.toFixed(1)} min`, `Gap: ${residual.toFixed(1)} min`]}
+                />
+              </CenteredDiagram>
+            </SceneFrame>,
+
+            // Broken into parts -- symbolic formula, then Elmhurst's
+            // numbers substituted in, then the gap against the actual
+            // travel time, then the population weighting -- with a short
+            // explanation after each, instead of one long code block.
+            // Plain body font and a left border accent (not a centered
+            // bordered box), matching the rest of the page's content.
+            // Reported live, 2026-10-06.
+            <SceneFrame key="s5">
+              <div style={{ width: "100%" }}>
+                <FormulaBlock>predicted = intercept + slope × log(density)</FormulaBlock>
+                <Prose>
+                  This is the line fitted across every neighborhood in the city: it turns a neighborhood&apos;s
+                  density into an expected travel time. Plugging in Elmhurst&apos;s own numbers:
+                </Prose>
+                <FormulaBlock>
+                  <div>density = {Math.round(elmhurst.density).toLocaleString()} people / sq mi</div>
+                  <div>log(density) = {Math.log(elmhurst.density).toFixed(2)}</div>
+                  <div style={{ marginTop: 12 }}>
+                    predicted = 61.47 − 3.80 × {Math.log(elmhurst.density).toFixed(2)} = {predicted.toFixed(1)} min
+                  </div>
+                </FormulaBlock>
+                <Prose>
+                  Elmhurst&apos;s actual soccer travel time is {elmhurst.travelTime.toFixed(1)} min, {residual.toFixed(1)}{" "}
+                  min longer than the {predicted.toFixed(1)} min a neighborhood this dense is expected to have.
+                </Prose>
+                <FormulaBlock>
+                  <div>actual = {elmhurst.travelTime.toFixed(1)} min</div>
+                  <div>
+                    residual = {elmhurst.travelTime.toFixed(1)} − {predicted.toFixed(1)} = {residual.toFixed(1)} min
+                  </div>
+                </FormulaBlock>
+                <Prose>
+                  To turn that gap into a burden score, we multiply it by Elmhurst&apos;s population (divided by
+                  10,000 just to keep the final numbers readable). The reason for that is: for NTAs with larger
+                  populations, a shortfall in sports access has a bigger effect as more people are affected by 
+                  the lack of sports facilities.
+                </Prose>
+                <Prose><br></br>
+                  Tompkinsville-Stapleton-Clifton-Fox Hills and Elmhurst have almost the same gap, about 8.4 and 8.8
+                  minutes. But Elmhurst has more than 5 times the population, so its burden score ends up nearly 6
+                  times higher.
+                </Prose>
+                <div style={{ display: "flex", flexDirection: "column", gap: 20, margin: "20px 0" }}>
+                  <ComparisonRow
+                    name="Tompkinsville-Stapleton-Clifton-Fox Hills"
+                    stats={[
+                      { label: "Population", value: "18,170" },
+                      { label: "Gap (actual − expected)", value: "8.4 min" },
+                      { label: "Burden score", value: "15.3" },
+                    ]}
+                  />
+                  <ComparisonRow
+                    name="Elmhurst"
+                    stats={[
+                      { label: "Population", value: "100,015" },
+                      { label: "Gap (actual − expected)", value: "8.8 min" },
+                      { label: "Burden score", value: "88.0" },
+                    ]}
+                  />
                 </div>
-                <div>actual = {elmhurst.travelTime.toFixed(1)} min</div>
-                <div>
-                  residual = {elmhurst.travelTime.toFixed(1)} − {predicted.toFixed(1)} = {residual.toFixed(1)} min
-                </div>
-                <div style={{ marginTop: 12 }}>
+                <FormulaBlock>
                   burden = {residual.toFixed(1)} × ({elmhurst.population.toLocaleString()} ÷ 10,000) = {burden.toFixed(1)}
-                </div>
+                </FormulaBlock>
+                <Prose>Every neighborhood, for every sport, is scored the same way.</Prose>
               </div>
-              <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc", marginTop: 16 }}>
-                Every neighborhood, for every sport, is scored the same way.
-              </p>
-            </CenteredDiagram>,
+            </SceneFrame>,
           ]}
         />
         </div>

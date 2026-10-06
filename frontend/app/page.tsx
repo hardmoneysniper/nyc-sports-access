@@ -143,12 +143,12 @@ function ImageCarousel() {
 // Each scrolled-to statement, two lines (headline + supporting line).
 const STORY_STEPS: { headline: string; body: string }[] = [
   {
-    headline: "More people should mean more places to play.",
-    body: "You would expect neighborhoods with more residents to have better access to public sports facilities.",
+    headline: "Denser neighborhoods should mean shorter trips to play.",
+    body: "You would expect denser neighborhoods, with more transit and more destinations nearby, to have better access to public sports facilities.",
   },
   {
     headline: "But that’s not always what we found.",
-    body: "Across New York City, population and access to sports facilities do not always line up.",
+    body: "Across New York City, density and access to sports facilities do not always line up.",
   },
   {
     headline: "Some neighborhoods have much less access than others.",
@@ -156,7 +156,7 @@ const STORY_STEPS: { headline: string; body: string }[] = [
   },
   {
     headline: "That can help show where investment is needed.",
-    body: "By comparing population, demographics, and access across different sports, the project points to neighborhoods where new or improved facilities could make the biggest difference.",
+    body: "By comparing density, demographics, and access across different sports, weighted by how many residents are affected, the project points to neighborhoods where new or improved facilities could make the biggest difference.",
   },
 ];
 
