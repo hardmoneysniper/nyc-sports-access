@@ -7,7 +7,17 @@ import { withBasePath } from "@/lib/basePath";
 
 const SPORT_WORDS = ["soccer field?", "basketball court?", "tennis court?", "baseball field?", "running track?"];
 const HEADING_PREFIX = "How close is the ";
-const CAROUSEL_IMAGES = ["/imgs/1.png", "/imgs/2.png", "/imgs/3.png", "/imgs/4.png"].map(withBasePath);
+// Shuffled display order (not 1-7 in sequence), per project owner
+// instruction, 2026-10-05.
+const CAROUSEL_IMAGES = [
+  "/imgs/3.png",
+  "/imgs/6.jpg",
+  "/imgs/1.png",
+  "/imgs/5.jpg",
+  "/imgs/2.png",
+  "/imgs/7.jpg",
+  "/imgs/4.png",
+].map(withBasePath);
 
 const TYPE_MS = 70;
 const DELETE_MS = 35;

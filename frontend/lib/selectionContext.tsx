@@ -49,22 +49,25 @@ export const SPORT_TYPES = [
 
 type DemographicCategory = (typeof DEMOGRAPHIC_CATEGORIES)[number]["value"];
 type SportType = (typeof SPORT_TYPES)[number]["value"];
+export type DemographicCategoryValue = DemographicCategory;
+export type SportTypeValue = SportType;
 
 type SelectionContextValue = {
-  demographicCategory: DemographicCategory;
-  setDemographicCategory: (value: DemographicCategory) => void;
-  sportType: SportType;
-  setSportType: (value: SportType) => void;
+  demographicCategory: DemographicCategory | null;
+  setDemographicCategory: (value: DemographicCategory | null) => void;
+  sportType: SportType | null;
+  setSportType: (value: SportType | null) => void;
 };
 
 const SelectionContext = createContext<SelectionContextValue | null>(null);
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
-  // Both selectors default to a real value now -- the travel-time page no
-  // longer has an unselected/"no data" state. Per project owner
-  // instruction, 2026-09-27.
-  const [demographicCategory, setDemographicCategory] = useState<DemographicCategory>("pct_immigrant");
-  const [sportType, setSportType] = useState<SportType>("soccer");
+  // Both selectors default to null (nothing selected, blank map) again --
+  // reverses the 2026-09-27 "no unselected state" decision. The map page
+  // now starts blank until the user picks something from the foldable
+  // catalog's dropdowns. Per project owner instruction, 2026-10-05.
+  const [demographicCategory, setDemographicCategory] = useState<DemographicCategory | null>(null);
+  const [sportType, setSportType] = useState<SportType | null>(null);
 
   // Persisted to localStorage (not just in-memory React state) so the
   // selection survives a page reload or a link opened in a new tab -- an
@@ -90,13 +93,15 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_DEMOGRAPHIC, demographicCategory);
+      if (demographicCategory) localStorage.setItem(STORAGE_KEY_DEMOGRAPHIC, demographicCategory);
+      else localStorage.removeItem(STORAGE_KEY_DEMOGRAPHIC);
     } catch {}
   }, [demographicCategory]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_SPORT, sportType);
+      if (sportType) localStorage.setItem(STORAGE_KEY_SPORT, sportType);
+      else localStorage.removeItem(STORAGE_KEY_SPORT);
     } catch {}
   }, [sportType]);
 

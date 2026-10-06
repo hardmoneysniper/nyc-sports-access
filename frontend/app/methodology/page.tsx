@@ -28,7 +28,9 @@ const SHOW_MENU_FONT_SIZE = 13;
 // instruction, 2026-10-05 ("it should always attach to the right edge of
 // the pop-out catalog... and move with the pop-out catalog").
 export default function MethodologyPage() {
-  const [menuOpen, setMenuOpen] = useState(false);
+  // Unfolded by default, matching the new map-page catalog. Per project
+  // owner instruction, 2026-10-05.
+  const [menuOpen, setMenuOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<MethodologyTab>("travel-time");
 
   return (

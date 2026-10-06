@@ -27,6 +27,18 @@ if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
 const NYC_CENTER: [number, number] = [-73.94, 40.7128]; // mapbox-gl uses [lng, lat]
 const NYC_ZOOM = 10;
 
+const NTA_BASE_FILL_LAYER_ID = "ntas-base-fill";
+// Less than the border's full opacity (the line layer's "line-color" has no
+// opacity set, so it's fully opaque) -- an "almost transparent" fill under
+// the blank/no-selection state, not a choropleth. Stays mounted underneath
+// the colored layer at all times (never added/removed), so toggling a
+// selection on fades the colored layer in over a base that was already
+// there instead of swapping map instances. Per project owner instruction,
+// 2026-10-05 ("make the blank map a base layer... toggling is just
+// toggling the overlaying layers").
+const BASE_FILL_OPACITY = 0.08;
+const FILL_OPACITY_TRANSITION_MS = 400;
+
 export type SlotId = "demographics" | "travel-time";
 export type MapView = { center: [number, number]; zoom: number };
 // properties carries the feature's raw data (NTAName, total_population,
@@ -59,6 +71,10 @@ type Props = {
   onFeatureIdsReady?: (slot: SlotId, ntaCodes: string[]) => void;
   onHover?: (slot: SlotId, info: HoverInfo | null) => void;
   onNtaClick?: (slot: SlotId, info: ClickInfo) => void;
+  // True when there's no selection to color by yet -- the colored overlay
+  // fades to 0 opacity (revealing the base layer) and hover/click are
+  // disabled, but the map/source/layers themselves stay mounted. Per
+  // project owner instruction, 2026-10-05.
   baseOnly?: boolean;
 };
 
@@ -89,6 +105,22 @@ function colorizeGeojson(
       };
     }),
   };
+}
+
+// The colored layer's base (unselected/undimmed) opacity is 0 whenever
+// there's no selection yet, 0 -> DEFAULT_FILL_OPACITY is what actually
+// animates (via fill-opacity-transition below) when a selection is made.
+// Selected/dimmed feature-states still win over that base value exactly
+// like before.
+function fillOpacityExpression(hasData: boolean): mapboxgl.Expression {
+  return [
+    "case",
+    ["boolean", ["feature-state", "selected"], false],
+    SELECTED_FILL_OPACITY,
+    ["boolean", ["feature-state", "dimmed"], false],
+    DIMMED_FILL_OPACITY,
+    hasData ? DEFAULT_FILL_OPACITY : 0,
+  ];
 }
 
 // NTA-click -> tract-detail view was deferred 2026-09-26, then rebuilt on
@@ -133,10 +165,10 @@ export default function InteractiveMap({
   // valueProperty/binEdges/callbacks can all change after those run once.
   // Updated in an effect (post-render), not during render itself, per
   // react-hooks/refs.
-  const coloringRef = useRef({ valueProperty, binEdges, colorMode });
+  const coloringRef = useRef({ valueProperty, binEdges, colorMode, baseOnly });
   useEffect(() => {
-    coloringRef.current = { valueProperty, binEdges, colorMode };
-  }, [valueProperty, binEdges, colorMode]);
+    coloringRef.current = { valueProperty, binEdges, colorMode, baseOnly };
+  }, [valueProperty, binEdges, colorMode, baseOnly]);
 
   const callbacksRef = useRef({ onMapReady, onFeatureIdsReady, onHover, onNtaClick });
   useEffect(() => {
@@ -144,7 +176,7 @@ export default function InteractiveMap({
   });
 
   useEffect(() => {
-    if (baseOnly || !containerRef.current) return;
+    if (!containerRef.current) return;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: MAPBOX_STYLE,
@@ -181,26 +213,30 @@ export default function InteractiveMap({
       }
 
       map.addSource(NTA_SOURCE_ID, { type: "geojson", data: colored as GeoJSON.GeoJSON });
+
+      // Faint, always-on base fill -- stays mounted under the colored
+      // layer in every state, so there's no map/layer swap to flash
+      // between "blank" and "colored", just the layer above it fading in.
+      map.addLayer({
+        id: NTA_BASE_FILL_LAYER_ID,
+        type: "fill",
+        source: NTA_SOURCE_ID,
+        paint: { "fill-color": "#ffffff", "fill-opacity": BASE_FILL_OPACITY },
+      });
+
       map.addLayer({
         id: NTA_FILL_LAYER_ID,
         type: "fill",
         source: NTA_SOURCE_ID,
         paint: {
           "fill-color": ["get", "_fillColor"],
-          // Selecting an NTA sets every OTHER feature's "dimmed"
-          // feature-state (see app/explore/page.tsx's setDimming) so it
-          // reads at DIMMED_FILL_OPACITY while the selected one stays at
-          // SELECTED_FILL_OPACITY. No transition on this property --
-          // fill-opacity-transition was tried here and reported not
-          // working in practice, 2026-09-27, so the change is instant.
-          "fill-opacity": [
-            "case",
-            ["boolean", ["feature-state", "selected"], false],
-            SELECTED_FILL_OPACITY,
-            ["boolean", ["feature-state", "dimmed"], false],
-            DIMMED_FILL_OPACITY,
-            DEFAULT_FILL_OPACITY,
-          ],
+          "fill-opacity": fillOpacityExpression(!!(vp && be)),
+          // Only animates the BASE value (blank <-> colored, set via
+          // setPaintProperty in the recolor effect below) -- the
+          // selected/dimmed feature-state cases switch instantly, same as
+          // before. Per project owner instruction, 2026-09-27 (instant
+          // dim/select) and 2026-10-05 (smooth blank<->colored fade).
+          "fill-opacity-transition": { duration: FILL_OPACITY_TRANSITION_MS },
         },
       });
       map.addLayer({
@@ -231,6 +267,13 @@ export default function InteractiveMap({
       }
 
       map.on("mousemove", NTA_FILL_LAYER_ID, (e) => {
+        const { valueProperty: curVp, binEdges: curBe } = coloringRef.current;
+        if (!curVp || !curBe) {
+          // Nothing selected -- no tooltip, no pointer cursor to promise a
+          // click will do anything.
+          map.getCanvas().style.cursor = "";
+          return;
+        }
         const feature = e.features?.[0];
         if (!feature) return;
         const props = feature.properties as NtaProperties;
@@ -254,6 +297,8 @@ export default function InteractiveMap({
       });
 
       map.on("click", NTA_FILL_LAYER_ID, (e) => {
+        const { valueProperty: curVp, binEdges: curBe } = coloringRef.current;
+        if (!curVp || !curBe) return;
         const feature = e.features?.[0];
         if (!feature?.geometry) return;
         const props = feature.properties as NtaProperties;
@@ -290,54 +335,28 @@ export default function InteractiveMap({
       map.remove();
       mapRef.current = null;
     };
-    // Created once per mount -- geojsonUrl/slot/baseOnly are fixed for the
-    // lifetime of a given InteractiveMap instance in this app.
+    // Created once per mount -- geojsonUrl/slot are fixed for the lifetime
+    // of a given InteractiveMap instance in this app. baseOnly/
+    // valueProperty/binEdges/colorMode are read from coloringRef (kept
+    // current by the effect above), not from this effect's own closure, so
+    // they're intentionally excluded here too -- the map/layers are
+    // created once and recolored/faded in place, never recreated.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseOnly]);
+  }, []);
 
-  // Recolor in place when the demographic category / sport type changes,
-  // without re-fetching or re-fitting.
+  // Recolor (and fade the colored layer in/out) in place when the
+  // demographic category / sport type changes, without re-fetching,
+  // re-fitting, or recreating the map.
   useEffect(() => {
-    if (baseOnly || !layersReadyRef.current) return;
+    if (!layersReadyRef.current) return;
     const map = mapRef.current;
     const raw = rawGeojsonRef.current;
     if (!map || !raw) return;
     const source = map.getSource(NTA_SOURCE_ID) as GeoJSONSource | undefined;
     if (!source) return;
     source.setData(colorizeGeojson(raw, valueProperty, binEdges, colorMode) as GeoJSON.GeoJSON);
-  }, [valueProperty, binEdges, colorMode, baseOnly]);
+    map.setPaintProperty(NTA_FILL_LAYER_ID, "fill-opacity", fillOpacityExpression(!!(valueProperty && binEdges)));
+  }, [valueProperty, binEdges, colorMode]);
 
-  if (baseOnly) {
-    return <BaseOnlyMap />;
-  }
-
-  return <div ref={containerRef} style={{ height: "100%", width: "100%" }} />;
-}
-
-// Renders just the basemap -- no choropleth data, no click handling. Used
-// for the "0 selected" state.
-function BaseOnlyMap() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: MAPBOX_STYLE,
-      center: NYC_CENTER,
-      zoom: NYC_ZOOM,
-      maxZoom: MAPBOX_MAX_ZOOM,
-      dragRotate: false,
-      pitchWithRotate: false,
-      touchPitch: false,
-    });
-    map.touchZoomRotate.disableRotation();
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-left");
-    const resizeObserver = new ResizeObserver(() => map.resize());
-    resizeObserver.observe(containerRef.current);
-    return () => {
-      resizeObserver.disconnect();
-      map.remove();
-    };
-  }, []);
   return <div ref={containerRef} style={{ height: "100%", width: "100%" }} />;
 }

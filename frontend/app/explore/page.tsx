@@ -4,14 +4,18 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES } from "@/lib/selectionContext";
-import { PERCENT_BIN_EDGES, positiveQuantileBinEdges } from "@/lib/colorScale";
+import { PERCENT_BIN_EDGES, BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_BAND_LABELS, positiveQuantileBinEdges } from "@/lib/colorScale";
 import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 import { withBasePath } from "@/lib/basePath";
 import type { SlotId, MapView, HoverInfo, ClickInfo } from "@/components/InteractiveMap";
-import MapPageSidebar from "@/components/MapPageSidebar";
+import MapPageSidebar, { SIDEBAR_WIDTH } from "@/components/MapPageSidebar";
+import MapMenuPanel, { PANEL_WIDTH } from "@/components/explore/MapMenuPanel";
+import MapLegend from "@/components/explore/MapLegend";
 
 const InteractiveMap = dynamic(() => import("@/components/InteractiveMap"), { ssr: false });
+
+const SHOW_MENU_FONT_SIZE = 13;
 
 type TooltipInfo = { slot: SlotId; ntaCode: string; lines: string[]; x: number; y: number };
 
@@ -22,21 +26,21 @@ type TooltipInfo = { slot: SlotId; ntaCode: string; lines: string[]; x: number; 
 function formatTooltipLines(
   slot: SlotId,
   properties: Record<string, unknown>,
-  demographicCategory: string,
-  sportType: string
+  demographicCategory: string | null,
+  sportType: string | null
 ): string[] {
   const name = (properties.NTAName as string) ?? "Unknown";
   if (slot === "demographics") {
     const totalPopulation = properties.total_population;
     const populationLine =
       typeof totalPopulation === "number" ? `Total population: ${totalPopulation.toLocaleString()}` : "Total population: No data";
-    const categoryLabel = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory)?.label ?? demographicCategory;
-    const categoryValue = properties[demographicCategory];
+    const categoryLabel = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory)?.label ?? demographicCategory ?? "";
+    const categoryValue = demographicCategory ? properties[demographicCategory] : null;
     const categoryLine = `${categoryLabel}: ${typeof categoryValue === "number" ? `${categoryValue.toFixed(1)}%` : "No data"}`;
     return [name, populationLine, categoryLine];
   }
-  const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType;
-  const burdenIndex = properties[`burden_index_${sportType}`] as number | null | undefined;
+  const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType ?? "";
+  const burdenIndex = sportType ? (properties[`burden_index_${sportType}`] as number | null | undefined) : null;
   // Exact raw score -- the map legend colors by percentile band
   // (colorForBurdenValue, via burdenBinEdges below), but the tooltip shows
   // the precise number. Per project owner instruction, 2026-09-29.
@@ -103,11 +107,7 @@ function NtaTooltip({ info }: { info: TooltipInfo }) {
 
 export default function ExplorePage() {
   const { demographicCategory, setDemographicCategory, sportType, setSportType } = useSelection();
-  // The burden-index map is always shown -- it's the page's primary
-  // content, not a toggle. Demographics is the optional add-on: checking
-  // it opens the second (synced) map, unchecking it closes it. Per
-  // project owner instruction, 2026-09-28.
-  const [showDemographics, setShowDemographics] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(true);
   const [burdenBinEdges, setBurdenBinEdges] = useState<number[] | null>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
@@ -128,8 +128,11 @@ export default function ExplorePage() {
   const allNtaCodesRef = useRef<string[]>([]);
   const [mapReadyVersion, setMapReadyVersion] = useState(0);
 
-  const valueProperty = `burden_index_${sportType}`;
-  const dualSynced = showDemographics;
+  // Split view (both panes) exists whenever a demographic is picked --
+  // the sport pane itself stays blank (baseOnly) until a sport is also
+  // picked. Per project owner instruction, 2026-10-05.
+  const dualSynced = demographicCategory !== null;
+  const valueProperty = sportType ? `burden_index_${sportType}` : null;
 
   const handleMapReady = useCallback((slot: SlotId, map: MapboxMap | null) => {
     mapRefs.current[slot] = map;
@@ -289,6 +292,10 @@ export default function ExplorePage() {
   }, [dualSynced, mapReadyVersion]);
 
   useEffect(() => {
+    // No setState here when valueProperty is null -- the call sites below
+    // already gate on `sportType` being set before reading burdenBinEdges,
+    // so a stale value just sits unused rather than needing a reset.
+    if (!valueProperty) return;
     let cancelled = false;
     fetch(withBasePath("/data/burden_index.geojson"))
       .then((res) => res.json())
@@ -305,79 +312,74 @@ export default function ExplorePage() {
     };
   }, [valueProperty]);
 
+  const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? "";
+  const demographicLabel = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory)?.label ?? "";
+
   return (
-    <div style={{ position: "relative", height: "100vh", width: "100vw", overflow: "hidden", display: "flex" }}>
+    <div style={{ position: "relative", height: "100vh", width: "100%", overflow: "hidden", display: "flex", background: "#000" }}>
       <MapPageSidebar />
-      <div style={{ position: "relative", flex: 1, height: "100%" }}>
-      <div
+      <MapMenuPanel
+        open={menuOpen}
+        sportType={sportType}
+        onSportTypeChange={setSportType}
+        demographicCategory={demographicCategory}
+        onDemographicCategoryChange={setDemographicCategory}
+      />
+      <button
+        type="button"
+        onClick={() => setMenuOpen((v) => !v)}
         style={{
           position: "absolute",
-          top: 10,
-          left: 10,
-          zIndex: 1000,
-          background: "white",
-          padding: "10px 12px",
-          borderRadius: 4,
-          fontSize: 13,
+          top: 0,
+          left: SIDEBAR_WIDTH + (menuOpen ? PANEL_WIDTH : 0),
+          transition: "left 300ms ease",
+          zIndex: 1200,
+          background: "#000",
+          color: "#fff",
+          border: "1px solid #fff",
+          borderRadius: 2,
+          padding: "8px 12px",
+          fontSize: SHOW_MENU_FONT_SIZE,
+          fontWeight: 600,
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
           gap: 6,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-          color: "#111",
+          cursor: "pointer",
         }}
       >
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={showDemographics}
-            onChange={(e) => setShowDemographics(e.target.checked)}
-            style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
-          />
-          Demographics (add-on)
-        </label>
-        {showDemographics && (
-          <div>
-            <label htmlFor="category-select">Demographic: </label>
-            <select
-              id="category-select"
-              value={demographicCategory}
-              onChange={(e) => setDemographicCategory(e.target.value as typeof demographicCategory)}
-            >
-              {DEMOGRAPHIC_CATEGORIES.map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
-          </div>
+        {menuOpen ? (
+          <>
+            <span aria-hidden>{"‹"}</span>
+            Hide Menu
+          </>
+        ) : (
+          <>
+            Show Menu
+            <span aria-hidden>{"›"}</span>
+          </>
         )}
-        <div>
-          <label htmlFor="sport-select">Sport facility type: </label>
-          <select id="sport-select" value={sportType} onChange={(e) => setSportType(e.target.value as typeof sportType)}>
-            {SPORT_TYPES.map((sport) => (
-              <option key={sport.value} value={sport.value}>
-                {sport.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div style={{ height: "100%", display: "flex" }}>
+      </button>
+
+      <div style={{ flex: 1, height: "100%", display: "flex" }}>
         <div style={{ flex: 1, height: "100%", position: "relative" }}>
           <InteractiveMap
             slot="travel-time"
             geojsonUrl={withBasePath("/data/burden_index.geojson")}
             valueProperty={valueProperty}
-            binEdges={burdenBinEdges}
+            binEdges={sportType ? burdenBinEdges : null}
             colorMode="positiveQuantile"
+            baseOnly={!sportType}
             onMapReady={handleMapReady}
             onFeatureIdsReady={handleFeatureIdsReady}
             onHover={handleHover}
             onNtaClick={handleNtaClick}
           />
+          {sportType && burdenBinEdges && (
+            <MapLegend title={`${sportLabel} Access Burden`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
+          )}
           {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
         </div>
-        {showDemographics && (
+        {demographicCategory && (
           <div style={{ flex: 1, height: "100%", position: "relative" }}>
             <InteractiveMap
               slot="demographics"
@@ -389,10 +391,14 @@ export default function ExplorePage() {
               onHover={handleHover}
               onNtaClick={handleNtaClick}
             />
+            <MapLegend
+              title={`${demographicLabel} (%)`}
+              colors={BIN_COLORS}
+              labels={PERCENT_BIN_EDGES.slice(1).map((edge) => String(edge))}
+            />
             {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
           </div>
         )}
-      </div>
       </div>
     </div>
   );
