@@ -144,19 +144,19 @@ function ImageCarousel() {
 const STORY_STEPS: { headline: string; body: string }[] = [
   {
     headline: "Denser neighborhoods should mean shorter trips to play.",
-    body: "You would expect denser neighborhoods, with more transit and more destinations nearby, to have better access to public sports facilities.",
+    body: "Where more people live close together, public sports facilities should be located nearby so residents can reach them in less time.",
   },
   {
     headline: "But that’s not always what we found.",
-    body: "Across New York City, density and access to sports facilities do not always line up.",
+    body: "Across New York City, some neighborhoods face longer trips to public sports facilities than expected for their population density.",
   },
   {
-    headline: "Some neighborhoods have much less access than others.",
-    body: "We highlight places where access to specific sports facilities falls short, and look at who lives in those neighborhoods (including immigrant and lower-income communities.)",
+    headline: "Who is affected by these longer trips?",
+    body: "We identified neighborhoods where access falls short of what is expected, and look at who lives in those neighborhoods (including immigrant and lower-income communities.)",
   },
   {
     headline: "That can help show where investment is needed.",
-    body: "By comparing density, demographics, and access across different sports, weighted by how many residents are affected, the project points to neighborhoods where new or improved facilities could make the biggest difference.",
+    body: "",
   },
 ];
 
@@ -210,7 +210,7 @@ function StorySection({ headline, body, isLast }: { headline: string; body: stri
         <p style={{ fontSize: 34, fontWeight: 700, lineHeight: 1.35, color: "#fff", maxWidth: 820, margin: 0 }}>
           {headline}
         </p>
-        <p style={{ fontSize: 19, lineHeight: 1.6, color: "#fff", maxWidth: 680, marginTop: 24 }}>{body}</p>
+        {body && <p style={{ fontSize: 19, lineHeight: 1.6, color: "#fff", maxWidth: 680, marginTop: 24 }}>{body}</p>}
 
         {isLast && (
           <Link href="/explore" style={{ marginTop: 40 }}>

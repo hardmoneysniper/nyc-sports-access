@@ -18,14 +18,16 @@ function SceneTrigger({
   index,
   topPercent,
   heightPercent,
+  threshold,
   onActivate,
 }: {
   index: number;
   topPercent: number;
   heightPercent: number;
+  threshold: number;
   onActivate: (index: number) => void;
 }) {
-  const { ref, inView } = useInView<HTMLDivElement>(0.5);
+  const { ref, inView } = useInView<HTMLDivElement>(threshold);
   useEffect(() => {
     if (inView) onActivate(index);
   }, [inView, index, onActivate]);
@@ -61,15 +63,19 @@ export default function PinnedScrollSequence({
   topOffset?: number;
 }) {
   const n = scenes.length;
-  // Every scene except the last gets a full 100vh of scroll runway; the
-  // last gets a short LAST_SCENE_VH tail instead -- once it activates
-  // there's nothing further to transition to, so a full extra 100vh of
-  // scrolling after it was just dead space before the page actually
-  // ended. Reported live, 2026-10-06 ("the last part... still has space
-  // for scrolling down... stop the scrolling once the user reaches the
-  // 'predicted...' formula").
-  const LAST_SCENE_VH = 30;
-  const totalVh = (n - 1) * 100 + LAST_SCENE_VH;
+  // Every scene gets a full 100vh slot, including the last -- a
+  // 100vh-tall sticky element can only stay fully pinned while the track
+  // has at least 100vh of height remaining below it; shrinking the last
+  // slot below that made the sticky box start releasing (sliding away)
+  // DURING the second-to-last scene, so the final scene appeared already
+  // partway off-screen, and the user scrolled through blank space for
+  // the remainder of the track. Reported live, 2026-10-06 ("a little bit
+  // of scroll exceeding the page's bottom"). The earlier complaint this
+  // was shrunk for ("dead space before reaching the final formula") is
+  // instead fixed below by firing the last scene's trigger almost
+  // immediately on entering its zone, instead of waiting for the 50%
+  // point like every other scene.
+  const totalVh = n * 100;
   return (
     <div style={{ position: "relative", height: `${totalVh}vh` }}>
       <div style={{ position: "sticky", top: -topOffset, height: "100vh", display: "flex", alignItems: "center" }}>
@@ -90,21 +96,21 @@ export default function PinnedScrollSequence({
           ))}
         </div>
       </div>
-      {scenes.map((_, i) => {
-        // Every scene before this one is a full 100vh, so scene i always
-        // starts at i*100vh regardless of how short the final scene's own
-        // slot is.
-        const heightVh = i === n - 1 ? LAST_SCENE_VH : 100;
-        return (
-          <SceneTrigger
-            key={i}
-            index={i}
-            topPercent={((i * 100) / totalVh) * 100}
-            heightPercent={(heightVh / totalVh) * 100}
-            onActivate={onActivate}
-          />
-        );
-      })}
+      {scenes.map((_, i) => (
+        <SceneTrigger
+          key={i}
+          index={i}
+          topPercent={(i / n) * 100}
+          heightPercent={(1 / n) * 100}
+          // The last scene fires almost as soon as its zone is entered
+          // (instead of waiting for 50% visible like every other scene),
+          // so it's on screen for nearly its whole 100vh slot rather than
+          // just the back half -- that's what makes the scroll down to it
+          // feel continuous instead of like there's a dead stretch first.
+          threshold={i === n - 1 ? 0.05 : 0.5}
+          onActivate={onActivate}
+        />
+      ))}
     </div>
   );
 }
