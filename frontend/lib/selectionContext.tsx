@@ -1,9 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-
-const STORAGE_KEY_DEMOGRAPHIC = "selection.demographicCategory";
-const STORAGE_KEY_SPORT = "selection.sportType";
+import { createContext, useContext, useState, ReactNode } from "react";
 
 export const DEMOGRAPHIC_CATEGORIES = [
   { value: "pct_non_white", label: "Non-white" },
@@ -62,48 +59,15 @@ type SelectionContextValue = {
 const SelectionContext = createContext<SelectionContextValue | null>(null);
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
-  // Both selectors default to null (nothing selected, blank map) again --
-  // reverses the 2026-09-27 "no unselected state" decision. The map page
-  // now starts blank until the user picks something from the foldable
-  // catalog's dropdowns. Per project owner instruction, 2026-10-05.
+  // Both selectors default to null (nothing selected, blank map) on every
+  // entry to the page -- no localStorage restore. An earlier version of
+  // this persisted the last selection to localStorage and restored it on
+  // mount, which meant reloading or revisiting /explore came back with
+  // whatever was selected last, instead of the intended blank-by-default
+  // state. Per project owner instruction, 2026-10-08 ("the default...
+  // should be nothing is selected").
   const [demographicCategory, setDemographicCategory] = useState<DemographicCategory | null>(null);
   const [sportType, setSportType] = useState<SportType | null>(null);
-
-  // Persisted to localStorage (not just in-memory React state) so the
-  // selection survives a page reload or a link opened in a new tab -- an
-  // in-memory-only version of this was the likely cause of routes not
-  // showing on the sample-NTA page after navigating there directly instead
-  // of via an in-app client-side transition. Read on mount (useEffect, not
-  // useState initializer, since localStorage doesn't exist during SSR) and
-  // written on every change.
-  useEffect(() => {
-    try {
-      const storedDemographic = localStorage.getItem(STORAGE_KEY_DEMOGRAPHIC) as DemographicCategory | null;
-      if (storedDemographic && DEMOGRAPHIC_CATEGORIES.some((c) => c.value === storedDemographic)) {
-        setDemographicCategory(storedDemographic);
-      }
-      const storedSport = localStorage.getItem(STORAGE_KEY_SPORT) as SportType | null;
-      if (storedSport && SPORT_TYPES.some((s) => s.value === storedSport)) {
-        setSportType(storedSport);
-      }
-    } catch {
-      // localStorage unavailable (e.g. private browsing) -- fall back to defaults silently.
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (demographicCategory) localStorage.setItem(STORAGE_KEY_DEMOGRAPHIC, demographicCategory);
-      else localStorage.removeItem(STORAGE_KEY_DEMOGRAPHIC);
-    } catch {}
-  }, [demographicCategory]);
-
-  useEffect(() => {
-    try {
-      if (sportType) localStorage.setItem(STORAGE_KEY_SPORT, sportType);
-      else localStorage.removeItem(STORAGE_KEY_SPORT);
-    } catch {}
-  }, [sportType]);
 
   return (
     <SelectionContext.Provider

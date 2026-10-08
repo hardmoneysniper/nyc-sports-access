@@ -133,12 +133,12 @@ export default function ScatterPlot({
         strokeOpacity={0.4}
       />
       {xTicks.map((t) => (
-        <text key={`xt-${t}`} x={sx(t)} y={PAD_TOP + plotH + 18} fill="#fff" fillOpacity={0.6} fontSize={11} textAnchor="middle">
+        <text key={`xt-${t}`} x={sx(t)} y={PAD_TOP + plotH + 12} fill="#fff" fillOpacity={0.6} fontSize={11} textAnchor="middle">
           {xTickFormat(t)}
         </text>
       ))}
       {yTicks.map((t) => (
-        <text key={`yt-${t}`} x={PAD_LEFT - 8} y={sy(t) + 4} fill="#fff" fillOpacity={0.6} fontSize={11} textAnchor="end">
+        <text key={`yt-${t}`} x={PAD_LEFT - 5} y={sy(t) + 4} fill="#fff" fillOpacity={0.6} fontSize={11} textAnchor="end">
           {yTickFormat(t)}
         </text>
       ))}

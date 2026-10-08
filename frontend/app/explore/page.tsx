@@ -19,6 +19,26 @@ const SHOW_MENU_FONT_SIZE = 13;
 
 type TooltipInfo = { slot: SlotId; ntaCode: string; lines: string[]; x: number; y: number };
 
+// Replaces the "‹"/"›" text glyphs the Hide/Show Menu button used to show
+// -- a font glyph's visual weight isn't geometrically centered within its
+// own character box, so the arrow read as off-center no matter how the
+// surrounding flex row was aligned. An SVG path has no such ambiguity: it's
+// centered by construction. Reported live, 2026-10-08 ("absolutely
+// centrally align the arrows for hide menu and show menu buttons").
+function MenuArrow({ direction }: { direction: "left" | "right" }) {
+  return (
+    <svg width={8} height={12} viewBox="0 0 8 12" fill="none" aria-hidden style={{ display: "block" }}>
+      <path
+        d={direction === "left" ? "M6.5 1L1.5 6L6.5 11" : "M1.5 1L6.5 6L1.5 11"}
+        stroke="#fff"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // Builds the tooltip's lines from a feature's raw properties -- the same
 // formatting is used for both hover and click, per project owner
 // instruction, 2026-09-27 ("the window shown upon hover should be the
@@ -336,7 +356,12 @@ export default function ExplorePage() {
           zIndex: 1200,
           background: "#000",
           color: "#fff",
-          border: "1px solid #fff",
+          // Matches the foldable catalog's own borders (its outer
+          // borderRight and the divider between its two sections), not an
+          // unrelated stark white. Per project owner instruction,
+          // 2026-10-08 ("the same as the borders for the demographic
+          // tab").
+          border: "1px solid #333",
           borderRadius: 2,
           padding: "8px 12px",
           fontSize: SHOW_MENU_FONT_SIZE,
@@ -349,13 +374,13 @@ export default function ExplorePage() {
       >
         {menuOpen ? (
           <>
-            <span aria-hidden>{"‹"}</span>
+            <MenuArrow direction="left" />
             Hide Menu
           </>
         ) : (
           <>
             Show Menu
-            <span aria-hidden>{"›"}</span>
+            <MenuArrow direction="right" />
           </>
         )}
       </button>

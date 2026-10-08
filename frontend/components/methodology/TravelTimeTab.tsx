@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { withBasePath } from "@/lib/basePath";
-import PinnedScrollSequence from "./PinnedScrollSequence";
-import CenteredDiagram from "./CenteredDiagram";
+import SplitPanel from "./SplitPanel";
+import { useAutoLoop } from "./useAutoLoop";
 import { boundsOf, exteriorRingOf, makeCenteredProjector, polygonCentroid, type LngLat } from "./geoProjection";
 
 // Illustrative worked example -- same neighborhood as the Burden Score
@@ -17,17 +17,18 @@ const ELMHURST_ID = "QN0401";
 // read this one NTA's one number. Per project owner instruction,
 // 2026-10-06 ("the travel time maps are loaded pretty slowly").
 const NTA_AVERAGE_MINUTES = 28.0758283409571;
-// One fixed size for every map scene (tract-only / +facility / +routes) --
-// a size or viewBox that differed scene-to-scene made the map appear to
-// jump/zoom as the user scrolled between them. Reported live, 2026-10-05.
-const MAP_W = 760;
-const MAP_H = 560;
-// CenteredDiagram's width is a CSS percentage of the available content
-// pane, so this can't overflow regardless of value -- bigger just means a
-// smaller margin around it. Per project owner instruction, 2026-10-05
-// ("bigger but not overflowing").
-const MAP_WIDTH_PERCENT = 92;
-const MAP_MAX_WIDTH = 1100;
+// Internal SVG coordinate system only -- the rendered size is controlled
+// by SplitPanel's bordered box (CSS), not this value directly.
+const MAP_W = 640;
+// Shorter than a 4:3 canvas (was 480) -- Elmhurst's real geographic
+// extent is much wider than tall (~2.8:1), so makeCenteredProjector's
+// width-constrained scale already filled the canvas's full width; a
+// taller canvas just meant more unused vertical margin inside the box,
+// which read as the map looking small/narrow relative to the box.
+// Reported live, 2026-10-08.
+const MAP_H = 360;
+const SCENE_COUNT = 4;
+const ROUTES_SCENE_INDEX = 2;
 
 type TractDatum = { geoid: string; ring: LngLat[]; centroid: LngLat };
 type RouteSegment = { mode: string; coords: LngLat[] };
@@ -36,11 +37,6 @@ type RouteDatum = { geoid: string; facilityId: string; totalMinutes: number; seg
 function useTravelTimeData() {
   const [tracts, setTracts] = useState<TractDatum[] | null>(null);
   const [routes, setRoutes] = useState<RouteDatum[] | null>(null);
-  // Real OSM street geometry around Elmhurst (see
-  // scripts/extract_elmhurst_roads.py) -- a decorative backdrop, but one
-  // that actually reflects the neighborhood's real road network, not a
-  // synthetic grid. Per project owner instruction, 2026-10-05.
-  const [roads, setRoads] = useState<LngLat[][] | null>(null);
   const [facilityPoints, setFacilityPoints] = useState<Map<string, LngLat> | null>(null);
 
   useEffect(() => {
@@ -97,13 +93,6 @@ function useTravelTimeData() {
         setRoutes(parsed);
       });
 
-    fetch(withBasePath("/data/roads/QN0401.geojson"))
-      .then((r) => r.json())
-      .then((d: GeoJSON.FeatureCollection) => {
-        if (cancelled) return;
-        setRoads(d.features.map((f) => (f.geometry as GeoJSON.LineString).coordinates as LngLat[]));
-      });
-
     fetch(withBasePath("/data/facilities/soccer.geojson"))
       .then((r) => r.json())
       .then((d: GeoJSON.FeatureCollection) => {
@@ -122,39 +111,31 @@ function useTravelTimeData() {
     };
   }, []);
 
-  return { tracts, routes, roads, facilityPoints };
+  return { tracts, routes, facilityPoints };
 }
 
-// Real street geometry (scripts/extract_elmhurst_roads.py), projected with
-// the same projector as the tracts/facilities -- so it lines up with them
-// geographically instead of being an abstract pattern. Extracted for a
-// bbox padded well beyond the NTA itself, so it reads as a city continuing
-// past the edges of the illustrated area; anything outside the viewBox is
-// simply clipped by the SVG's own bounds. Very dark grey, very wide
-// strokes -- "almost invisible" against the pure black background by
-// color, not by opacity (opacity alone made it too easy to miss). Per
-// project owner instruction, 2026-10-05.
-function RoadNetworkLayer({ roads, project }: { roads: LngLat[][]; project: (p: LngLat) => [number, number] }) {
-  return (
-    <g aria-hidden>
-      {roads.map((line, i) => (
-        <polyline
-          key={i}
-          points={line.map((c) => project(c).join(",")).join(" ")}
-          fill="none"
-          stroke="#232323"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </g>
-  );
+// Pre-rasterized once by scripts/render_elmhurst_roads_png.py from the same
+// real OSM street geometry (scripts/extract_elmhurst_roads.py), using the
+// exact same projection math (geoProjection.ts's makeCenteredProjector,
+// same MAP_W/MAP_H/padding) so it lines up pixel-for-pixel with the live
+// tract/route/facility SVG overlays drawn on top of it. Was a live SVG
+// <path> of ~9,000 road segments, re-rasterized as vector geometry on every
+// resize -- including the page's own menu-collapse animation, which
+// continuously resizes this box for ~300ms. A static image resizes via
+// cheap bitmap scaling instead of re-rasterizing ~9,000 segments' worth of
+// vector paths every frame. Must be regenerated if MAP_W/MAP_H/padding ever
+// change. Per project owner instruction, 2026-10-08 ("is it possible to
+// use a png instead... the road network does not change across all
+// frames").
+const ROADS_BACKDROP_SRC = withBasePath("/imgs/elmhurst_roads_backdrop.png");
+
+function Prose({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <p style={{ fontSize: 18, lineHeight: 1.65, color: "#ccc", marginTop: 12, ...style }}>{children}</p>;
 }
 
 export default function TravelTimeTab() {
-  const { tracts, routes, roads, facilityPoints } = useTravelTimeData();
-  const [sceneIndex, setSceneIndex] = useState(0);
+  const { tracts, routes, facilityPoints } = useTravelTimeData();
+  const activeIndex = useAutoLoop(SCENE_COUNT, 2000);
 
   const facilityCoords = useMemo(() => {
     if (!routes || !facilityPoints) return [];
@@ -179,18 +160,16 @@ export default function TravelTimeTab() {
     [bounds]
   );
 
-  const ready = tracts && routes && roads && project;
-  const routesActive = sceneIndex === 2;
+  const ready = tracts && routes && project;
+  const routesActive = activeIndex === ROUTES_SCENE_INDEX;
 
-  // Shared between the interactive route-reveal scene and the final
-  // scene's faded backdrop (the "completed route visualization from the
-  // previous scroll" behind the average-minutes number), so the two don't
-  // drift out of sync with each other. Per project owner instruction,
-  // 2026-10-05.
+  // Shared between the route-reveal scene and the final scene's backdrop
+  // (the "completed route visualization" behind the average-minutes
+  // number), so the two don't drift out of sync with each other. Per
+  // project owner instruction, 2026-10-05.
   function renderRouteMapSvg({ showRoutes, stagger }: { showRoutes: boolean; stagger: boolean }) {
     return (
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-        <RoadNetworkLayer roads={roads!} project={project!} />
         {tracts!.map((t) => (
           <polygon
             key={t.geoid}
@@ -206,7 +185,7 @@ export default function TravelTimeTab() {
             key={r.geoid}
             style={{
               opacity: showRoutes ? 1 : 0,
-              transition: stagger ? `opacity 400ms ease ${i * 45}ms` : undefined,
+              transition: stagger ? `opacity 400ms ease ${i * 15}ms` : undefined,
             }}
           >
             {r.segments.map((seg, si) => (
@@ -231,124 +210,103 @@ export default function TravelTimeTab() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 48, fontWeight: 700, margin: 0 }}>Travel Time</h1>
-
-      <section style={{ marginTop: 40 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 600 }}>Why census tracts</h2>
-        <p style={{ fontSize: 16, lineHeight: 1.65, color: "#ccc" }}>
-          Neighborhoods are too large to route from a single point, since residents on opposite ends of the same
-          neighborhood can have very different trips. We route from each census tract inside a neighborhood instead,
-          then combine the tracts back into a neighborhood-level number. The scroll below walks through the process
-          for one neighborhood, Elmhurst, using soccer as the example sport.
-        </p>
-      </section>
-
-      {!ready && <p style={{ color: "#777", marginTop: 40 }}>Loading data…</p>}
+      {!ready && (
+        <>
+          <h1 style={{ fontSize: 48, fontWeight: 700, margin: 0 }}>Travel Time</h1>
+          <p style={{ color: "#777", marginTop: 40 }}>Loading data…</p>
+        </>
+      )}
 
       {ready && (
-        <div style={{ marginTop: 24 }}>
-        <PinnedScrollSequence
-          activeIndex={sceneIndex}
-          onActivate={setSceneIndex}
-          topOffset={64}
-          scenes={[
-            <CenteredDiagram
-              key="s0"
-              widthPercent={MAP_WIDTH_PERCENT}
-              maxWidth={MAP_MAX_WIDTH}
-              caption={`Elmhurst's ${tracts!.length} census tracts, each with its own center point.`}
-            >
-              <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-                <RoadNetworkLayer roads={roads!} project={project!} />
-                {tracts!.map((t) => (
-                  <polygon
-                    key={t.geoid}
-                    points={t.ring.map((p) => project!(p).join(",")).join(" ")}
-                    fill="none"
-                    stroke="#fff"
-                    strokeOpacity={0.45}
-                    strokeWidth={1}
-                  />
-                ))}
-                {tracts!.map((t) => {
-                  const [x, y] = project!(t.centroid);
-                  return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" />;
-                })}
-              </svg>
-            </CenteredDiagram>,
+        <>
+          <h1 style={{ fontSize: 48, fontWeight: 700, margin: 0 }}>Travel Time</h1>
+          <div style={{ marginTop: 32 }}>
+            <SplitPanel
+              activeIndex={activeIndex}
+              backdrop={
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={ROADS_BACKDROP_SRC}
+                  alt=""
+                  aria-hidden
+                  style={{ width: "100%", height: "auto", display: "block" }}
+                />
+              }
+              scenes={[
+            <svg key="s0" viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+              {tracts!.map((t) => (
+                <polygon
+                  key={t.geoid}
+                  points={t.ring.map((p) => project!(p).join(",")).join(" ")}
+                  fill="none"
+                  stroke="#fff"
+                  strokeOpacity={0.45}
+                  strokeWidth={1}
+                />
+              ))}
+              {tracts!.map((t) => {
+                const [x, y] = project!(t.centroid);
+                return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" />;
+              })}
+            </svg>,
 
-            <CenteredDiagram
-              key="s1"
-              widthPercent={MAP_WIDTH_PERCENT}
-              maxWidth={MAP_MAX_WIDTH}
-              caption="Each tract's nearest soccer facility (squares) is found separately."
-            >
-              <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-                <RoadNetworkLayer roads={roads!} project={project!} />
-                {tracts!.map((t) => (
-                  <polygon
-                    key={t.geoid}
-                    points={t.ring.map((p) => project!(p).join(",")).join(" ")}
-                    fill="none"
-                    stroke="#fff"
-                    strokeOpacity={0.3}
-                    strokeWidth={1}
-                  />
-                ))}
-                {tracts!.map((t) => {
-                  const [x, y] = project!(t.centroid);
-                  return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" fillOpacity={0.6} />;
-                })}
-                {facilityCoords.map((p, i) => {
-                  const [x, y] = project!(p);
-                  return <rect key={i} x={x - 5} y={y - 5} width={10} height={10} fill="#fff" />;
-                })}
-              </svg>
-            </CenteredDiagram>,
+            <svg key="s1" viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+              {tracts!.map((t) => (
+                <polygon
+                  key={t.geoid}
+                  points={t.ring.map((p) => project!(p).join(",")).join(" ")}
+                  fill="none"
+                  stroke="#fff"
+                  strokeOpacity={0.3}
+                  strokeWidth={1}
+                />
+              ))}
+              {tracts!.map((t) => {
+                const [x, y] = project!(t.centroid);
+                return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" fillOpacity={0.6} />;
+              })}
+              {facilityCoords.map((p, i) => {
+                const [x, y] = project!(p);
+                return <rect key={i} x={x - 5} y={y - 5} width={10} height={10} fill="#fff" />;
+              })}
+            </svg>,
 
-            <CenteredDiagram
-              key="s2"
-              widthPercent={MAP_WIDTH_PERCENT}
-              maxWidth={MAP_MAX_WIDTH}
-              caption="Calculate every tract's travel route and time to its nearest facility, by transit."
-            >
-              {renderRouteMapSvg({ showRoutes: routesActive, stagger: true })}
-            </CenteredDiagram>,
+            renderRouteMapSvg({ showRoutes: routesActive, stagger: true }),
 
-            // Same CenteredDiagram props and the same completed map as
-            // scene s2 -- not a separately laid-out redraw -- so the map
-            // doesn't visually shift or rescale under the crossfade. A 50%
-            // black layer settles over it and the average fades in on top,
-            // reading as "the just-finished route map, dimmed." Reported
-            // live, 2026-10-05 ("the faded backdrop is not aligned").
-            <CenteredDiagram key="s3" widthPercent={MAP_WIDTH_PERCENT} maxWidth={MAP_MAX_WIDTH}>
-              <div style={{ position: "relative" }}>
-                {renderRouteMapSvg({ showRoutes: true, stagger: false })}
-                <div style={{ position: "absolute", inset: 0, background: "#000", opacity: 0.75 }} />
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 56, fontWeight: 700 }}>{NTA_AVERAGE_MINUTES.toFixed(1)} min</div>
-                  <p style={{ marginTop: 12, fontSize: 15, color: "#ccc" }}>
-                    Elmhurst&apos;s average soccer travel time, weighted by each tract&apos;s population.
-                  </p>
-                  <p style={{ marginTop: 12, fontSize: 15, color: "#ccc" }}>
-                    Every neighborhood&apos;s travel time, for every sport, is calculated the same way.
-                  </p>
-                </div>
+            <div key="s3" style={{ position: "relative", width: "100%" }}>
+              {renderRouteMapSvg({ showRoutes: true, stagger: false })}
+              <div style={{ position: "absolute", inset: 0, background: "#000", opacity: 0.75 }} />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div style={{ fontSize: 48, fontWeight: 700, color: "#fff" }}>{NTA_AVERAGE_MINUTES.toFixed(1)} min</div>
               </div>
-            </CenteredDiagram>,
+            </div>,
           ]}
-        />
-        </div>
+          captions={[
+            <>Elmhurst&apos;s {tracts!.length} census tracts, each with its own center point.</>,
+            <>Each tract&apos;s nearest soccer facility (squares) is found separately.</>,
+            <>Calculate every tract&apos;s travel route and time to its nearest facility, by transit.</>,
+            <>Elmhurst&apos;s average soccer travel time, weighted by each tract&apos;s population.</>,
+          ]}
+          aspectRatio={`${MAP_W} / ${MAP_H}`}
+        >
+              <Prose style={{ marginTop: 0 }}>
+                Residents at opposite ends of a neighborhood can have very different trips, so a single starting
+                point cannot represent everyone&apos;s access. Each <u>Neighborhood Tabulation Area (NTA)</u> is made
+                up of smaller geographic areas called <u>census tracts</u>. We use each tract&apos;s midpoint as the
+                starting point to calculate travel time to the nearest public sports facility, then take a{" "}
+                <u>population</u>-weighted average for the NTA, giving more weight to tracts with more residents.
+              </Prose>
+            </SplitPanel>
+          </div>
+        </>
       )}
     </div>
   );

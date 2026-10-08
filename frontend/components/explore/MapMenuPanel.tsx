@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DEMOGRAPHIC_CATEGORIES,
   SPORT_TYPES,
@@ -17,60 +17,118 @@ import {
 // the same height regardless of which is open, and gives the not-yet-built
 // "Featured Maps" section zero footprint once it's added later. Matches
 // 2A.png. Per project owner instruction, 2026-10-05.
-export const PANEL_WIDTH = 360;
+// 20% narrower than the original 360. Per project owner instruction,
+// 2026-10-08.
+export const PANEL_WIDTH = 288;
 
 type SectionId = "recreation" | "demographic";
 
-function Chevron() {
+function Chevron({ direction = "down" }: { direction?: "down" | "up" }) {
   return (
-    <svg width={12} height={8} viewBox="0 0 12 8" fill="none" aria-hidden style={{ flexShrink: 0 }}>
+    <svg
+      width={12}
+      height={8}
+      viewBox="0 0 12 8"
+      fill="none"
+      aria-hidden
+      style={{ flexShrink: 0, transform: direction === "up" ? "rotate(180deg)" : "none" }}
+    >
       <path d="M1 1.5L6 6.5L11 1.5" stroke="#fff" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
+// Custom listbox (not a native <select>) -- matches 2B.png's design, which
+// expands the option list inline below the label row (dark grey panel,
+// white rows) rather than relying on the browser's own native dropdown
+// popup, which can't be restyled this way and can't flip its own disclosure
+// arrow on open/close. Per project owner instruction, 2026-10-08 ("change
+// the downward arrow to upward arrow... make the style of the dropdown
+// menu consistent with the design in 2B.png").
 function DropdownField<T extends string>({
   value,
   onChange,
   options,
+  placeholder = "Select...",
 }: {
   value: T | null;
   onChange: (value: T | null) => void;
   options: readonly { value: T; label: string }[];
+  placeholder?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? placeholder;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const pick = (v: T | null) => {
+    onChange(v);
+    setOpen(false);
+  };
+
   return (
-    <div style={{ position: "relative", padding: "0 28px" }}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange((e.target.value || null) as T | null)}
+    <div ref={rootRef} style={{ padding: "0 28px" }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
         style={{
-          width: "100%",
-          appearance: "none",
-          background: "transparent",
-          color: "#fff",
-          border: "none",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
           borderBottom: "1px solid #666",
-          padding: "8px 20px 8px 0",
+          padding: "8px 0",
           fontSize: 15,
           fontWeight: 600,
+          color: "#fff",
           cursor: "pointer",
         }}
       >
-        {/* Plain, selectable (not disabled/hidden) -- picking it explicitly
-            resets the map back to the blank state, same as never having
-            chosen anything. Per project owner instruction, 2026-10-05. */}
-        <option value="" style={{ color: "#000" }}>
-          Select...
-        </option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value} style={{ color: "#000" }}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <div style={{ position: "absolute", right: 28, top: 12, pointerEvents: "none" }}>
-        <Chevron />
+        <span>{value === null ? placeholder : selectedLabel}</span>
+        <Chevron direction={open ? "up" : "down"} />
       </div>
+      {/* Sized to content, no maxHeight/scroll -- a flex:1-stretched box
+          filled the accordion body's entire available height regardless of
+          option count, leaving a tall blank strip below short lists
+          (Demographic has only 6). A maxHeight cap fixed that but clipped
+          the sport list's full 20 options behind a scrollbar; dropped
+          entirely so every option is always visible at once. Reported
+          live, 2026-10-08 ("make all option show at once"). */}
+      {open && (
+        <div style={{ background: "#242424", paddingBottom: 5 }}>
+          {/* paddingLeft, not a literal leading space character -- a plain
+              " " gets collapsed away entirely by the browser's own
+              white-space:normal rules regardless of how it got into the
+              text, and even a non-collapsing non-breaking space is too
+              subtle to read as a deliberate indent at this font size.
+              Reported live, 2026-10-08 ("I didn't see a space in front of
+              each option"). */}
+          <div onClick={() => pick(null)} style={{ padding: "5px 0 5px 8px", fontSize: 13, color: "#fff", cursor: "pointer" }}>
+            {placeholder}
+          </div>
+          {options.map((o) => (
+            <div key={o.value} onClick={() => pick(o.value)} style={{ padding: "5px 0 5px 8px", fontSize: 13, color: "#fff", cursor: "pointer" }}>
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -185,9 +243,9 @@ export default function MapMenuPanel({
         transition: "flex-basis 300ms ease",
       }}
     >
-      <div style={{ width: PANEL_WIDTH, height: "100%", display: "flex", flexDirection: "column", paddingTop: 48 }}>
+      <div style={{ width: PANEL_WIDTH, height: "100%", display: "flex", flexDirection: "column" }}>
           <AccordionSection
-            title="Recreation Facility"
+            title="Access Burden Score"
             active={activeSection === "recreation"}
             onActivate={() => setActiveSection("recreation")}
           >
@@ -195,6 +253,7 @@ export default function MapMenuPanel({
               value={sportType}
               onChange={onSportTypeChange}
               options={SPORT_TYPES}
+              placeholder="Select sports facility"
             />
           </AccordionSection>
 

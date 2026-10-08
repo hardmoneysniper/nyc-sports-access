@@ -19,7 +19,9 @@
 // out unclipped too.)
 export type MethodologyTab = "travel-time" | "burden-score" | "data-source";
 
-export const PANEL_WIDTH = 360;
+// 20% narrower than the original 360. Per project owner instruction,
+// 2026-10-08.
+export const PANEL_WIDTH = 288;
 
 const ITEMS: { id: MethodologyTab; label: string }[] = [
   { id: "travel-time", label: "Travel Time" },
@@ -49,7 +51,7 @@ export default function MethodologyMenuPanel({
     >
       {/* Fixed-width inner wrapper so content doesn't reflow/squash while
           the outer flex-basis animates -- it just gets clipped/revealed. */}
-      <div style={{ width: PANEL_WIDTH, height: "100%", paddingTop: 48 }}>
+      <div style={{ width: PANEL_WIDTH, height: "100%" }}>
         {ITEMS.map((item) => {
           const isActive = item.id === activeTab;
           return (
