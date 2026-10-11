@@ -55,9 +55,12 @@ export function binLabel(binEdges: number[], index: number, suffix = ""): string
 // instruction, 2026-09-29 -- reusing it directly (not a copy) so the two
 // never drift apart.
 export const BURDEN_BIN_COLORS = BIN_COLORS;
-// "Nth percentile" (the band's upper cutoff), not a "low-high" range --
-// per project owner instruction, 2026-09-29.
-export const BURDEN_BAND_LABELS = ["20th percentile", "40th percentile", "60th percentile", "80th percentile", "100th percentile"];
+// "Nth" (the band's upper percentile cutoff), not a "low-high" range --
+// per project owner instruction, 2026-09-29. The word "percentile" itself
+// now lives once in the legend's title ("(Percentile)") instead of on
+// every entry -- repeating it per label was crowding the narrow legend
+// columns. Per project owner instruction, 2026-10-11.
+export const BURDEN_BAND_LABELS = ["20th", "40th", "60th", "80th", "100th"];
 
 /**
  * Equal-count (quintile) bin edges computed from only the POSITIVE values

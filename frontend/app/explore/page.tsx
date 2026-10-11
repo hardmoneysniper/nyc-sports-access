@@ -400,7 +400,7 @@ export default function ExplorePage() {
             onNtaClick={handleNtaClick}
           />
           {sportType && burdenBinEdges && (
-            <MapLegend title={`${sportLabel} Access Burden`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
+            <MapLegend title={`${sportLabel} Access Burden (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
           )}
           {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
         </div>

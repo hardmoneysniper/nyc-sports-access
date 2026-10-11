@@ -37,8 +37,12 @@ export default function MapLegend({
         {labels.map((label, i) => (
           // No nowrap -- long labels like "20th percentile" wrap onto 2
           // lines within the narrow swatch column instead of overflowing
-          // into neighboring columns.
-          <div key={i} style={{ width: 34, fontSize: 9.5, color: "#aaa", textAlign: "center", lineHeight: 1.25 }}>
+          // into neighboring columns. Left-aligned (not centered) and a
+          // smaller font -- centered wrapped text spilled past its own
+          // 34px column on both sides and visibly collided with the
+          // neighboring label. Reported live, 2026-10-11 ("the text on
+          // the map legends are overlapping... especially percentile").
+          <div key={i} style={{ width: 34, fontSize: 8, color: "#aaa", textAlign: "left", lineHeight: 1.2 }}>
             {label}
           </div>
         ))}
