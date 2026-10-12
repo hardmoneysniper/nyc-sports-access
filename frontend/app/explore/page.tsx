@@ -7,6 +7,7 @@ import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES } from "@/lib/selecti
 import { PERCENT_BIN_EDGES, BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_BAND_LABELS, positiveQuantileBinEdges } from "@/lib/colorScale";
 import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
+import { featureCollectionBounds, zoomToFitBounds } from "@/lib/geoBounds";
 import { withBasePath } from "@/lib/basePath";
 import type { SlotId, MapView, HoverInfo, ClickInfo } from "@/components/InteractiveMap";
 import MapPageSidebar, { SIDEBAR_WIDTH } from "@/components/MapPageSidebar";
@@ -148,6 +149,55 @@ export default function ExplorePage() {
   const allNtaCodesRef = useRef<string[]>([]);
   const [mapReadyVersion, setMapReadyVersion] = useState(0);
 
+  // Demographics' own bounds and the exact zoom a half-width pane needs to
+  // fit them -- computed via pure Web Mercator math (zoomToFitBounds, the
+  // same formula Mapbox GL itself uses for fitBounds at bearing/pitch 0),
+  // not a live headless map. A hidden, headless mapboxgl.Map was tried
+  // first for this and kept landing late or not applying at all --
+  // plausibly because the browser/mapbox-gl don't fully render/load a
+  // style for a visibility:hidden, non-interactive canvas the same way as
+  // a visible one. Pure arithmetic has no such dependency: given the
+  // bounds and a target container size, the answer is synchronous and
+  // deterministic. Both the single-pane (burden map alone, full-width) and
+  // dual-pane (both maps, half-width) views get locked to this SAME
+  // number, so there's only ever one "smallest scale." Reported live,
+  // 2026-10-12 ("it still does not start at the floor scale right now").
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+  const [demoBounds, setDemoBounds] = useState<[[number, number], [number, number]] | null>(null);
+  const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
+  const minZoomAppliedRef = useRef<Partial<Record<SlotId, boolean>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(withBasePath("/data/demographics.geojson"))
+      .then((res) => res.json())
+      .then((data: GeoJSON.FeatureCollection) => {
+        if (!cancelled) setDemoBounds(featureCollectionBounds(data));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The content area's own current size, in pixels -- half of its width is
+  // exactly what a real dual-pane half-pane would be. Measured directly
+  // (not derived from SIDEBAR_WIDTH/PANEL_WIDTH constants) so it stays
+  // correct regardless of viewport size or whether the catalog is open.
+  useEffect(() => {
+    const el = contentAreaRef.current;
+    if (!el) return;
+    const measure = () => setContentSize({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const referenceMinZoom =
+    demoBounds && contentSize
+      ? zoomToFitBounds(demoBounds, contentSize.width / 2, contentSize.height, 10, MAPBOX_MAX_ZOOM)
+      : null;
+
   // Split view (both panes) exists whenever a demographic is picked --
   // the sport pane itself stays blank (baseOnly) until a sport is also
   // picked. Per project owner instruction, 2026-10-05.
@@ -282,11 +332,26 @@ export default function ExplorePage() {
   // relay is enough to keep both maps moving together in lockstep for
   // every case, with no separate handling needed for zoom vs pan vs
   // programmatic flyTo. Per project owner instruction, 2026-09-27.
+  //
+  // Before linking cameras, also re-applies the measured referenceMinZoom
+  // to demographics (belt-and-suspenders -- it should already match its
+  // own self-computed floor exactly, since it always mounts at the real
+  // half-width size, but this guarantees it regardless). This MUST run
+  // before the jumpTo below, not after -- jumpTo-ing to a zoom below the
+  // map's CURRENT minZoom gets silently clamped back up, so relaxing the
+  // floor in a separate, later effect previously left the default view
+  // stuck above the floor instead of landing on it. Reported live,
+  // 2026-10-11/2026-10-12.
   useEffect(() => {
     if (!dualSynced) return;
     const mapA = mapRefs.current.demographics;
     const mapB = mapRefs.current["travel-time"];
     if (!mapA || !mapB) return;
+
+    if (referenceMinZoom !== null) {
+      mapA.setMinZoom(referenceMinZoom);
+      mapB.setMinZoom(referenceMinZoom);
+    }
 
     let syncSource: "a" | "b" | null = null;
     const fromA = () => {
@@ -309,7 +374,34 @@ export default function ExplorePage() {
       mapA.off("move", fromA);
       mapB.off("move", fromB);
     };
-  }, [dualSynced, mapReadyVersion]);
+  }, [dualSynced, mapReadyVersion, referenceMinZoom]);
+
+  // Single-pane case: applies the same measured referenceMinZoom directly
+  // to whichever map is up (normally just travel-time, mounted alone
+  // before any demographic is picked) as both its default view AND its
+  // floor, so the very first thing a visitor sees is already at the same
+  // scale dual-pane view would later lock it to -- not a tighter,
+  // full-width-only fit that then visibly snaps out once a demographic is
+  // selected. setMinZoom MUST run before setZoom, not after -- the map's
+  // CURRENT minZoom is still its old (tighter) self-computed value at this
+  // point, so setZoom to a MORE zoomed-out target gets silently clamped
+  // back up to that old floor; setMinZoom relaxes the floor but never
+  // retroactively moves an already-clamped camera. Got this backwards
+  // here even after fixing the identical bug in the dual-pane effect
+  // above. Guarded per-slot so it only ever runs once per map (a later
+  // re-render with the same referenceMinZoom shouldn't yank the camera
+  // back after the user has already zoomed/panned). Reported live,
+  // 2026-10-12 ("it is not working... check it for yourself").
+  useEffect(() => {
+    if (referenceMinZoom === null) return;
+    (Object.keys(mapRefs.current) as SlotId[]).forEach((slot) => {
+      const map = mapRefs.current[slot];
+      if (!map || minZoomAppliedRef.current[slot]) return;
+      minZoomAppliedRef.current[slot] = true;
+      map.setMinZoom(referenceMinZoom);
+      map.setZoom(referenceMinZoom);
+    });
+  }, [referenceMinZoom, mapReadyVersion]);
 
   useEffect(() => {
     // No setState here when valueProperty is null -- the call sites below
@@ -385,11 +477,12 @@ export default function ExplorePage() {
         )}
       </button>
 
-      <div style={{ flex: 1, height: "100%", display: "flex" }}>
+      <div ref={contentAreaRef} style={{ flex: 1, height: "100%", display: "flex", position: "relative" }}>
         <div style={{ flex: 1, height: "100%", position: "relative" }}>
           <InteractiveMap
             slot="travel-time"
             geojsonUrl={withBasePath("/data/burden_index.geojson")}
+            boundsUrl={withBasePath("/data/demographics.geojson")}
             valueProperty={valueProperty}
             binEdges={sportType ? burdenBinEdges : null}
             colorMode="positiveQuantile"

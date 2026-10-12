@@ -59,6 +59,17 @@ type NtaProperties = { NTA2020: string; NTAName: string; _fillColor: string; _no
 type Props = {
   slot: SlotId;
   geojsonUrl: string;
+  // Fetched purely to compute the initial fitBounds/minZoom from, instead
+  // of geojsonUrl's own data -- demographics.geojson and burden_index.geojson
+  // cover the same 262 NTAs but their bounding boxes aren't bit-for-bit
+  // identical, so each map locking its own minZoom to its own data's fit
+  // (via setMinZoom(getZoom()) below) let them zoom out to slightly
+  // different scales. Both maps now fit off the SAME file (demographics',
+  // passed from the parent) regardless of which one they display, so their
+  // minZoom always matches exactly. Falls back to geojsonUrl's own data if
+  // omitted. Reported live, 2026-10-11 ("the smallest scale... is not the
+  // same as burden score map").
+  boundsUrl?: string;
   valueProperty: string | null;
   binEdges: number[] | null;
   // "positiveQuantile" is the burden-index map's coloring: values <= 0 get
@@ -136,6 +147,7 @@ function fillOpacityExpression(hasData: boolean): mapboxgl.Expression {
 export default function InteractiveMap({
   slot,
   geojsonUrl,
+  boundsUrl,
   valueProperty,
   binEdges,
   colorMode = "quantile",
@@ -148,6 +160,7 @@ export default function InteractiveMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const rawGeojsonRef = useRef<GeoJSON.FeatureCollection | null>(null);
+  const boundsGeojsonRef = useRef<GeoJSON.FeatureCollection | null>(null);
   const firstFitDoneRef = useRef(false);
   // True once the source+layers have been added at least once. The recolor
   // effect below used to gate on map.isStyleLoaded(), falling back to
@@ -259,7 +272,7 @@ export default function InteractiveMap({
       layersReadyRef.current = true;
 
       if (!firstFitDoneRef.current) {
-        const bounds = featureCollectionBounds(colored);
+        const bounds = featureCollectionBounds(boundsGeojsonRef.current ?? colored);
         map.fitBounds(bounds, { padding: 10, duration: 0, maxZoom: MAPBOX_MAX_ZOOM });
         map.setMinZoom(map.getZoom());
         firstFitDoneRef.current = true;
@@ -315,18 +328,27 @@ export default function InteractiveMap({
     };
 
     let cancelled = false;
-    fetch(geojsonUrl)
-      .then((res) => res.json())
-      .then((data: GeoJSON.FeatureCollection) => {
-        if (cancelled) return;
-        rawGeojsonRef.current = data;
-        callbacksRef.current.onFeatureIdsReady?.(
-          slot,
-          data.features.map((f) => f.properties?.NTA2020 as string)
-        );
-        if (map.isStyleLoaded()) applyData();
-        else map.once("load", applyData);
-      });
+    Promise.all([
+      fetch(geojsonUrl).then((res) => res.json() as Promise<GeoJSON.FeatureCollection>),
+      boundsUrl && boundsUrl !== geojsonUrl
+        // Falls back to null (-> this map's own data's bounds) rather than
+        // failing the whole load if this secondary fetch errors -- an
+        // unrelated minZoom mismatch isn't worth losing the map over.
+        ? fetch(boundsUrl)
+            .then((res) => res.json() as Promise<GeoJSON.FeatureCollection>)
+            .catch(() => null)
+        : Promise.resolve(null),
+    ]).then(([data, boundsData]) => {
+      if (cancelled) return;
+      rawGeojsonRef.current = data;
+      boundsGeojsonRef.current = boundsData;
+      callbacksRef.current.onFeatureIdsReady?.(
+        slot,
+        data.features.map((f) => f.properties?.NTA2020 as string)
+      );
+      if (map.isStyleLoaded()) applyData();
+      else map.once("load", applyData);
+    });
 
     return () => {
       cancelled = true;
@@ -335,8 +357,8 @@ export default function InteractiveMap({
       map.remove();
       mapRef.current = null;
     };
-    // Created once per mount -- geojsonUrl/slot are fixed for the lifetime
-    // of a given InteractiveMap instance in this app. baseOnly/
+    // Created once per mount -- geojsonUrl/boundsUrl/slot are fixed for the
+    // lifetime of a given InteractiveMap instance in this app. baseOnly/
     // valueProperty/binEdges/colorMode are read from coloringRef (kept
     // current by the effect above), not from this effect's own closure, so
     // they're intentionally excluded here too -- the map/layers are

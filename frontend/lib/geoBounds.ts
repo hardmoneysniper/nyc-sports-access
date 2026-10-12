@@ -46,3 +46,38 @@ export function featureCollectionBounds(fc: GeoJSON.FeatureCollection): [[number
     [maxLng, maxLat],
   ];
 }
+
+// Mapbox's own fitBounds/cameraForBounds zoom math (bearing/pitch 0 case),
+// reimplemented as pure, synchronous arithmetic -- no live map instance
+// needed. A headless, hidden mapboxgl.Map was tried first to get this
+// number (exact, but depends on the browser actually rendering/loading a
+// style for a visibility:hidden, non-interactive canvas, and on React
+// effect timing lining up before the real map's own default view is
+// shown) and was still landing late or not at all. This has no such
+// dependency: given a bounds box and a target container size, it's just
+// Web Mercator projection math, standard tile size (512px), and
+// scale=2^zoom -- the exact formula Mapbox GL itself uses internally.
+// Reported live, 2026-10-12 ("it still does not start at the floor scale
+// right now").
+const MERCATOR_TILE_SIZE = 512;
+
+function mercatorY(lat: number): number {
+  const rad = (lat * Math.PI) / 180;
+  return (1 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / Math.PI) / 2;
+}
+
+export function zoomToFitBounds(
+  bounds: [[number, number], [number, number]],
+  width: number,
+  height: number,
+  padding: number,
+  maxZoom: number
+): number {
+  const [[west, south], [east, north]] = bounds;
+  const dx = Math.abs((east + 180) / 360 - (west + 180) / 360);
+  const dy = Math.abs(mercatorY(south) - mercatorY(north));
+  const availW = Math.max(1, width - padding * 2);
+  const availH = Math.max(1, height - padding * 2);
+  const zoom = Math.min(Math.log2(availW / (dx * MERCATOR_TILE_SIZE)), Math.log2(availH / (dy * MERCATOR_TILE_SIZE)));
+  return Math.min(zoom, maxZoom);
+}
