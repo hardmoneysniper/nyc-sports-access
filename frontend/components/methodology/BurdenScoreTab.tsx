@@ -207,7 +207,7 @@ export default function BurdenScoreTab() {
               between the dots and the line. This results in an equation that estimates expected travel time from
               population density, based on the citywide pattern.
             </Prose>
-            <div style={{ fontSize: 20, color: "#fff", margin: "24px 0" }}>
+            <div style={{ fontSize: 20, color: "#fff", margin: "52px 0" }}>
               Expected Travel Time = 61.47 − 3.80 × ln(density)
             </div>
             <Prose>

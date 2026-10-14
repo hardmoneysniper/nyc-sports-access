@@ -26,6 +26,7 @@ export default function SplitPanel({
   leftWidth,
   boxMaxWidth,
   sceneBottomPadding = 0,
+  layout = "row",
 }: {
   // Left column content, heading included (h1/h2, whichever the caller
   // needs) -- no dedicated title prop, since where the heading sits
@@ -85,57 +86,78 @@ export default function SplitPanel({
   // through as an explicit `bottom` inset instead. Reported live,
   // 2026-10-08 ("increase vertical padding on the bottom").
   sceneBottomPadding?: number;
+  // "column" stacks the text above the animation, both at full available
+  // width (the animation's box matches the text's width exactly, since
+  // both are then just plain block-level children of the same parent --
+  // no column-splitting math needed). "row" (default) keeps the original
+  // side-by-side layout. Per project owner instruction, 2026-10-14 ("put
+  // the animation the same width below the text... keep the animation
+  // mechanism the same").
+  layout?: "row" | "column";
 }) {
-  return (
-    <div style={{ display: "flex", gap: 64, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div style={leftWidth ? { flex: `0 0 ${leftWidth}px` } : { flex: "1 1 420px", minWidth: 320 }}>{children}</div>
-      <div style={{ flex: leftWidth ? "1 1 auto" : `${rightFlex} 1 420px`, minWidth: 320 }}>
-        <div style={{ position: "relative", aspectRatio, maxWidth: boxMaxWidth, border: "1px solid #444" }}>
-          {backdrop && (
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: sceneBottomPadding }}>{backdrop}</div>
-          )}
-          {scenes.map((scene, i) => (
+  const box = (
+    <>
+      <div style={{ position: "relative", aspectRatio, maxWidth: boxMaxWidth, border: "1px solid #444" }}>
+        {backdrop && (
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: sceneBottomPadding }}>{backdrop}</div>
+        )}
+        {scenes.map((scene, i) => (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: sceneBottomPadding,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: i === activeIndex ? 1 : 0,
+              transition: "opacity 300ms ease",
+              pointerEvents: i === activeIndex ? "auto" : "none",
+            }}
+          >
+            {scene}
+          </div>
+        ))}
+      </div>
+      {captions && (
+        <div style={{ position: "relative", marginTop: 16, minHeight: 56 }}>
+          {captions.map((caption, i) => (
             <div
               key={i}
               style={{
                 position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: sceneBottomPadding,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                inset: 0,
+                fontSize: 16,
+                color: "#ccc",
+                lineHeight: 1.5,
                 opacity: i === activeIndex ? 1 : 0,
                 transition: "opacity 300ms ease",
-                pointerEvents: i === activeIndex ? "auto" : "none",
               }}
             >
-              {scene}
+              {caption}
             </div>
           ))}
         </div>
-        {captions && (
-          <div style={{ position: "relative", marginTop: 16, minHeight: 56 }}>
-            {captions.map((caption, i) => (
-              <div
-                key={i}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  fontSize: 16,
-                  color: "#ccc",
-                  lineHeight: 1.5,
-                  opacity: i === activeIndex ? 1 : 0,
-                  transition: "opacity 300ms ease",
-                }}
-              >
-                {caption}
-              </div>
-            ))}
-          </div>
-        )}
+      )}
+    </>
+  );
+
+  if (layout === "column") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+        <div>{children}</div>
+        <div>{box}</div>
       </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 64, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={leftWidth ? { flex: `0 0 ${leftWidth}px` } : { flex: "1 1 420px", minWidth: 320 }}>{children}</div>
+      <div style={{ flex: leftWidth ? "1 1 auto" : `${rightFlex} 1 420px`, minWidth: 320 }}>{box}</div>
     </div>
   );
 }

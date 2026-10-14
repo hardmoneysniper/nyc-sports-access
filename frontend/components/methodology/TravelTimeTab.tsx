@@ -281,11 +281,22 @@ export default function TravelTimeTab() {
                   position: "absolute",
                   inset: 0,
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: 8,
                 }}
               >
                 <div style={{ fontSize: 48, fontWeight: 700, color: "#fff" }}>{NTA_AVERAGE_MINUTES.toFixed(1)} min</div>
+                {/* Small, static copy of the last rolling caption, right
+                    under the number itself -- the rolling caption strip
+                    below the whole animation box keeps rolling in sync
+                    with every scene exactly as before; this is in addition
+                    to that, not a replacement. Per project owner
+                    instruction, 2026-10-14. */}
+                <div style={{ fontSize: 13, color: "#ccc", textAlign: "center", maxWidth: 280 }}>
+                  Elmhurst&apos;s average soccer travel time, weighted by each tract&apos;s population.
+                </div>
               </div>
             </div>,
           ]}
@@ -296,6 +307,7 @@ export default function TravelTimeTab() {
             <>Elmhurst&apos;s average soccer travel time, weighted by each tract&apos;s population.</>,
           ]}
           aspectRatio={`${MAP_W} / ${MAP_H}`}
+          layout="column"
         >
               <Prose style={{ marginTop: 0 }}>
                 Residents at opposite ends of a neighborhood can have very different trips, so a single starting
