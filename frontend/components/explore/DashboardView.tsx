@@ -65,13 +65,9 @@ function ordinal(n: number): string {
 
 type NtaRecord = { ntaCode: string; name: string; borough: BoroughCode | null; density: number | null; burden: number | null; travelTime: number | null };
 
-function useNtaData(sportType: SportTypeValue | null) {
+function useNtaData(sportType: SportTypeValue) {
   const [records, setRecords] = useState<NtaRecord[] | null>(null);
-  // Falls back to soccer (same illustrative default used elsewhere on the
-  // methodology page) when nothing's been picked in the Recreation
-  // Facility dropdown yet. Reported live, 2026-10-14 ("Burden score and
-  // average travel time diagrams are empty on the diagrams page").
-  const effectiveSport = sportType ?? "soccer";
+  const effectiveSport = sportType;
 
   useEffect(() => {
     let cancelled = false;
@@ -201,6 +197,20 @@ function RankedBarChart({
 }
 
 export default function DashboardView({ sportType }: { sportType: SportTypeValue | null }) {
+  if (!sportType) {
+    return (
+      <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "40px 80px 120px", color: "#fff" }}>
+        <div style={{ marginTop: 32 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Select a sports facility to view the charts</h2>
+        </div>
+      </div>
+    );
+  }
+
+  return <SelectedFacilityDashboard sportType={sportType} />;
+}
+
+function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue }) {
   const records = useNtaData(sportType);
   const [borough, setBorough] = useState<BoroughCode | null>(null);
   const [selectedNta, setSelectedNta] = useState<string | null>(null);
