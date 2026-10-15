@@ -36,21 +36,51 @@ type RouteDatum = { geoid: string; facilityId: string; totalMinutes: number; seg
 
 function useTravelTimeData() {
   const [tracts, setTracts] = useState<TractDatum[] | null>(null);
+  const [ntaBoundary, setNtaBoundary] = useState<LngLat[] | null>(null);
   const [routes, setRoutes] = useState<RouteDatum[] | null>(null);
   const [facilityPoints, setFacilityPoints] = useState<Map<string, LngLat> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    fetch(withBasePath(`/data/tracts/${ELMHURST_ID}.geojson`))
+    // The dot shown for each tract is its real routing origin (shapely's
+    // representative_point(), computed once by scripts/extract_elmhurst_
+    // tract_origins.py using the actual pipeline.offsets.compute_origin_
+    // point function) -- not the frontend's own recomputed area-weighted
+    // polygon centroid, which can land tens to hundreds of meters away for
+    // an irregularly-shaped tract and doesn't match what travel times are
+    // actually calculated from. Falls back to the geometric centroid only
+    // if a tract's real origin is somehow missing. Per project owner
+    // instruction, 2026-10-14 ("use the actual origin for the location of
+    // these dots").
+    Promise.all([
+      fetch(withBasePath(`/data/tracts/${ELMHURST_ID}.geojson`)).then((r) => r.json()),
+      fetch(withBasePath(`/data/tracts/${ELMHURST_ID}_origins.geojson`)).then((r) => r.json()),
+    ]).then(([d, origins]: [GeoJSON.FeatureCollection, GeoJSON.FeatureCollection]) => {
+      if (cancelled) return;
+      const originByGeoid = new Map<string, LngLat>();
+      for (const f of origins.features) {
+        originByGeoid.set(f.properties?.GEOID as string, (f.geometry as GeoJSON.Point).coordinates as LngLat);
+      }
+      const parsed: TractDatum[] = d.features.map((f) => {
+        const ring = exteriorRingOf(f.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon);
+        const geoid = f.properties?.GEOID as string;
+        return { geoid, ring, centroid: originByGeoid.get(geoid) ?? polygonCentroid(ring) };
+      });
+      setTracts(parsed);
+    });
+
+    // Elmhurst's single NTA-level outer edge (scripts/extract_elmhurst_nta_
+    // boundary.py), not each tract's own internal boundary -- the
+    // route-reveal scene shows the neighborhood's one outer edge, with
+    // tract centroid dots inside it, instead of a grid of per-tract lines.
+    // Per project owner instruction, 2026-10-14 ("only show the outer
+    // boundary of the nta").
+    fetch(withBasePath(`/data/tracts/${ELMHURST_ID}_boundary.geojson`))
       .then((r) => r.json())
       .then((d: GeoJSON.FeatureCollection) => {
         if (cancelled) return;
-        const parsed: TractDatum[] = d.features.map((f) => {
-          const ring = exteriorRingOf(f.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon);
-          return { geoid: f.properties?.GEOID as string, ring, centroid: polygonCentroid(ring) };
-        });
-        setTracts(parsed);
+        setNtaBoundary(exteriorRingOf(d.features[0].geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon));
       });
 
     // Pre-filtered to soccer/weekday_evening by
@@ -111,7 +141,7 @@ function useTravelTimeData() {
     };
   }, []);
 
-  return { tracts, routes, facilityPoints };
+  return { tracts, ntaBoundary, routes, facilityPoints };
 }
 
 // Pre-rasterized once by scripts/render_elmhurst_roads_png.py from the same
@@ -134,14 +164,38 @@ function Prose({ children, style }: { children: React.ReactNode; style?: React.C
 }
 
 export default function TravelTimeTab() {
-  const { tracts, routes, facilityPoints } = useTravelTimeData();
-  const activeIndex = useAutoLoop(SCENE_COUNT, 2000);
+  const { tracts, ntaBoundary, routes, facilityPoints } = useTravelTimeData();
+  const activeIndex = useAutoLoop(SCENE_COUNT, 5000);
 
   const facilityCoords = useMemo(() => {
     if (!routes || !facilityPoints) return [];
     const ids = Array.from(new Set(routes.map((r) => r.facilityId)));
     return ids.map((id) => facilityPoints.get(id)).filter((p): p is LngLat => !!p);
   }, [routes, facilityPoints]);
+
+  // Real route geometry starts at whatever street/transit access point r5py
+  // snapped the origin to, which can be a short (but visible, at this
+  // map's scale) walk from the dot itself -- prepending the origin to the
+  // route's geometry (tried first) just turned that gap into an obviously
+  // fake dead-straight "spike" sticking out of the dot for any tract where
+  // the gap was more than a few meters, which read as the exact "protruding
+  // line" being reported, not a fix for it. For this illustrative diagram,
+  // the dot shown alongside routes (s2) is instead the route's own real
+  // first coordinate -- wherever its actual walk leg starts -- so the dot
+  // and the line are the same point by construction, with nothing
+  // synthesized to bridge them. Showcase purposes only: s0/s1 (no routes
+  // drawn) still show each tract's true routing origin, unaffected. Per
+  // project owner instruction, 2026-10-14 ("make the rendered routes...
+  // only start from the dots"; "there is still a protruding line out of
+  // the centroids").
+  const routeStartByGeoid = useMemo(() => {
+    const map = new Map<string, LngLat>();
+    routes?.forEach((r) => {
+      const firstCoord = r.segments[0]?.coords[0];
+      if (firstCoord) map.set(r.geoid, firstCoord);
+    });
+    return map;
+  }, [routes]);
 
   // The NTA's own tracts stay centered on the canvas regardless of where a
   // nearest facility happens to fall; the scale is still sized to fit the
@@ -160,26 +214,60 @@ export default function TravelTimeTab() {
     [bounds]
   );
 
-  const ready = tracts && routes && project;
+  const ready = tracts && ntaBoundary && routes && project;
   const routesActive = activeIndex === ROUTES_SCENE_INDEX;
 
   // Shared between the route-reveal scene and the final scene's backdrop
   // (the "completed route visualization" behind the average-minutes
   // number), so the two don't drift out of sync with each other. Per
   // project owner instruction, 2026-10-05.
-  function renderRouteMapSvg({ showRoutes, stagger }: { showRoutes: boolean; stagger: boolean }) {
+  function renderRouteMapSvg({
+    showRoutes,
+    stagger,
+    showCentroidDots = false,
+  }: {
+    showRoutes: boolean;
+    stagger: boolean;
+    // Swaps the per-tract boundary outlines for the NTA's single outer
+    // edge plus tract centroid dots (matching s0/s1's dot style) -- used by
+    // both the route-reveal scene (s2) AND its reuse as the final scene's
+    // dimmed backdrop (s3), so the two stay visually identical underneath
+    // the dimming/number overlay. Per project owner instruction, 2026-10-14
+    // ("remove the boundary line on the 3rd frame... show the dots
+    // representing centroids of tracts instead"; "only show the outer
+    // boundary of the nta"; "keep the underlying visualization for frame 4
+    // the same as the one on frame 3").
+    showCentroidDots?: boolean;
+  }) {
     return (
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-        {tracts!.map((t) => (
-          <polygon
-            key={t.geoid}
-            points={t.ring.map((p) => project!(p).join(",")).join(" ")}
-            fill="none"
-            stroke="#fff"
-            strokeOpacity={0.25}
-            strokeWidth={1}
-          />
-        ))}
+        {showCentroidDots ? (
+          <>
+            <polygon
+              points={ntaBoundary!.map((p) => project!(p).join(",")).join(" ")}
+              fill="#fff"
+              fillOpacity={0.05}
+              stroke="#fff"
+              strokeOpacity={0.25}
+              strokeWidth={1}
+            />
+            {tracts!.map((t) => {
+              const [x, y] = project!(routeStartByGeoid.get(t.geoid) ?? t.centroid);
+              return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" />;
+            })}
+          </>
+        ) : (
+          tracts!.map((t) => (
+            <polygon
+              key={t.geoid}
+              points={t.ring.map((p) => project!(p).join(",")).join(" ")}
+              fill="none"
+              stroke="#fff"
+              strokeOpacity={0.25}
+              strokeWidth={1}
+            />
+          ))
+        )}
         {routes!.map((r, i) => (
           <g
             key={r.geoid}
@@ -271,10 +359,10 @@ export default function TravelTimeTab() {
               })}
             </svg>,
 
-            renderRouteMapSvg({ showRoutes: routesActive, stagger: true }),
+            renderRouteMapSvg({ showRoutes: routesActive, stagger: true, showCentroidDots: true }),
 
             <div key="s3" style={{ position: "relative", width: "100%" }}>
-              {renderRouteMapSvg({ showRoutes: true, stagger: false })}
+              {renderRouteMapSvg({ showRoutes: true, stagger: false, showCentroidDots: true })}
               <div style={{ position: "absolute", inset: 0, background: "#000", opacity: 0.75 }} />
               <div
                 style={{
@@ -313,7 +401,20 @@ export default function TravelTimeTab() {
                 Residents at opposite ends of a neighborhood can have very different trips, so a single starting
                 point cannot represent everyone&apos;s access. Each <u>Neighborhood Tabulation Area (NTA)</u> is made
                 up of smaller geographic areas called <u>census tracts</u>. We use each tract&apos;s midpoint as the
-                starting point to calculate travel time to the nearest public sports facility, then take a{" "}
+                starting point to calculate travel time to the nearest public sports facility. Travel times are
+                computed from{" "}
+                <a
+                  href="https://www.mta.info/developers"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#ccc", textDecoration: "underline" }}
+                >
+                  real transit schedules
+                </a>{" "}
+                (the subway, every city bus route, and NYC Ferry) and the
+                actual street and path network from OpenStreetMap, combined with an open-source routing engine
+                that simulates real trips (walking, waiting for and riding transit, and walking again) rather than
+                estimating distance as the crow flies. We then take a{" "}
                 <u>population</u>-weighted average for the NTA, giving more weight to tracts with more residents.
               </Prose>
             </SplitPanel>

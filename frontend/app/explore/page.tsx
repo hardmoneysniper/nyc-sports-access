@@ -13,6 +13,7 @@ import type { SlotId, MapView, HoverInfo, ClickInfo } from "@/components/Interac
 import MapPageSidebar, { SIDEBAR_WIDTH } from "@/components/MapPageSidebar";
 import MapMenuPanel, { PANEL_WIDTH } from "@/components/explore/MapMenuPanel";
 import MapLegend from "@/components/explore/MapLegend";
+import DashboardView from "@/components/explore/DashboardView";
 
 const InteractiveMap = dynamic(() => import("@/components/InteractiveMap"), { ssr: false });
 
@@ -129,6 +130,7 @@ function NtaTooltip({ info }: { info: TooltipInfo }) {
 export default function ExplorePage() {
   const { demographicCategory, setDemographicCategory, sportType, setSportType } = useSelection();
   const [menuOpen, setMenuOpen] = useState(true);
+  const [view, setView] = useState<"map" | "charts">("map");
   const [burdenBinEdges, setBurdenBinEdges] = useState<number[] | null>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
@@ -436,6 +438,8 @@ export default function ExplorePage() {
         onSportTypeChange={setSportType}
         demographicCategory={demographicCategory}
         onDemographicCategoryChange={setDemographicCategory}
+        view={view}
+        onViewChange={setView}
       />
       <button
         type="button"
@@ -477,46 +481,54 @@ export default function ExplorePage() {
         )}
       </button>
 
-      <div ref={contentAreaRef} style={{ flex: 1, height: "100%", display: "flex", position: "relative" }}>
-        <div style={{ flex: 1, height: "100%", position: "relative" }}>
-          <InteractiveMap
-            slot="travel-time"
-            geojsonUrl={withBasePath("/data/burden_index.geojson")}
-            boundsUrl={withBasePath("/data/demographics.geojson")}
-            valueProperty={valueProperty}
-            binEdges={sportType ? burdenBinEdges : null}
-            colorMode="positiveQuantile"
-            baseOnly={!sportType}
-            onMapReady={handleMapReady}
-            onFeatureIdsReady={handleFeatureIdsReady}
-            onHover={handleHover}
-            onNtaClick={handleNtaClick}
-          />
-          {sportType && burdenBinEdges && (
-            <MapLegend title={`${sportLabel} Access Burden (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
-          )}
-          {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
-        </div>
-        {demographicCategory && (
+      <div ref={contentAreaRef} style={{ flex: 1, height: "100%", position: "relative" }}>
+        {/* display:none (not unmounted) while viewing charts -- the maps
+            stay alive underneath so switching back to the map view doesn't
+            re-fetch/re-fit everything from scratch. Per project owner
+            instruction, 2026-10-14 ("click on the map [icon] to go to the
+            normal map view"). */}
+        <div style={{ display: view === "map" ? "flex" : "none", height: "100%" }}>
           <div style={{ flex: 1, height: "100%", position: "relative" }}>
             <InteractiveMap
-              slot="demographics"
-              geojsonUrl={withBasePath("/data/demographics.geojson")}
-              valueProperty={demographicCategory}
-              binEdges={PERCENT_BIN_EDGES}
+              slot="travel-time"
+              geojsonUrl={withBasePath("/data/burden_index.geojson")}
+              boundsUrl={withBasePath("/data/demographics.geojson")}
+              valueProperty={valueProperty}
+              binEdges={sportType ? burdenBinEdges : null}
+              colorMode="positiveQuantile"
+              baseOnly={!sportType}
               onMapReady={handleMapReady}
               onFeatureIdsReady={handleFeatureIdsReady}
               onHover={handleHover}
               onNtaClick={handleNtaClick}
             />
-            <MapLegend
-              title={`${demographicLabel} (%)`}
-              colors={BIN_COLORS}
-              labels={PERCENT_BIN_EDGES.slice(1).map((edge) => String(edge))}
-            />
-            {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
+            {sportType && burdenBinEdges && (
+              <MapLegend title={`${sportLabel} Access Burden (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
+            )}
+            {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
           </div>
-        )}
+          {demographicCategory && (
+            <div style={{ flex: 1, height: "100%", position: "relative" }}>
+              <InteractiveMap
+                slot="demographics"
+                geojsonUrl={withBasePath("/data/demographics.geojson")}
+                valueProperty={demographicCategory}
+                binEdges={PERCENT_BIN_EDGES}
+                onMapReady={handleMapReady}
+                onFeatureIdsReady={handleFeatureIdsReady}
+                onHover={handleHover}
+                onNtaClick={handleNtaClick}
+              />
+              <MapLegend
+                title={`${demographicLabel} (%)`}
+                colors={BIN_COLORS}
+                labels={PERCENT_BIN_EDGES.slice(1).map((edge) => String(edge))}
+              />
+              {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
+            </div>
+          )}
+        </div>
+        {view === "charts" && <DashboardView sportType={sportType} />}
       </div>
     </div>
   );

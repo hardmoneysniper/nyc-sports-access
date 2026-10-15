@@ -160,7 +160,7 @@ export default function MapPageSidebar() {
       />
       <div style={{ flex: 1 }} />
       <SidebarNavItem
-        label="About"
+        label="Mission"
         active={activeTab === "about"}
         padding="30px 8px"
         href="/"
@@ -168,7 +168,7 @@ export default function MapPageSidebar() {
       />
       <div style={{ flex: "0 0 56px" }} />
       <SidebarNavItem
-        label="Methodology"
+        label="Learn More"
         active={activeTab === "methodology"}
         padding="30px 8px"
         href="/methodology"

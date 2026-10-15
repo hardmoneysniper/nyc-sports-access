@@ -35,6 +35,11 @@ body {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+  /* Applied universally (not just html/body) since the map and
+     methodology pages scroll their own internal overflow:auto content
+     panes, not the page body -- a no-op on anything that isn't itself a
+     scroll container. Per project owner instruction, 2026-10-14. */
+  overscroll-behavior: none;
 }
 
 a {

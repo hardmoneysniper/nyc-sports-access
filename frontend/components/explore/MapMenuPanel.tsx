@@ -45,16 +45,36 @@ function Chevron({ direction = "down" }: { direction?: "down" | "up" }) {
 // arrow on open/close. Per project owner instruction, 2026-10-08 ("change
 // the downward arrow to upward arrow... make the style of the dropdown
 // menu consistent with the design in 2B.png").
-function DropdownField<T extends string>({
+// Exported so DashboardView's "Borough" selector (2D.png) can reuse the
+// exact same listbox instead of a second near-duplicate implementation.
+export function DropdownField<T extends string>({
   value,
   onChange,
   options,
   placeholder = "Select...",
+  // Was always a flat 28px, tuned for sitting inside the narrow side-panel
+  // accordion (MapMenuPanel's own usage). DashboardView reuses this same
+  // component directly under a plain section heading with no panel edges
+  // to pad away from, and that fixed 28px shifted its text 28px right of
+  // every other heading on the page. Per project owner instruction,
+  // 2026-10-14 ("left align the borough selection box with the titles").
+  horizontalPadding = 28,
+  // In MapMenuPanel's own narrow side-panel accordion, the open list is
+  // meant to push the rest of that panel's content down (it's what the
+  // accordion's flex-grow sizing already expects). DashboardView's layout
+  // has no such expectation: opening the list there just shoved the bar
+  // charts below it down the page. When true, the list instead overlays
+  // on top of whatever's below, without affecting anyone's layout height.
+  // Per project owner instruction, 2026-10-14 ("When the dropdown expands,
+  // don't let the chart move down").
+  floatList = false,
 }: {
   value: T | null;
   onChange: (value: T | null) => void;
   options: readonly { value: T; label: string }[];
   placeholder?: string;
+  horizontalPadding?: number;
+  floatList?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -75,7 +95,7 @@ function DropdownField<T extends string>({
   };
 
   return (
-    <div ref={rootRef} style={{ padding: "0 28px" }}>
+    <div ref={rootRef} style={{ padding: `0 ${horizontalPadding}px`, position: "relative" }}>
       <div
         role="button"
         tabIndex={0}
@@ -111,7 +131,13 @@ function DropdownField<T extends string>({
           entirely so every option is always visible at once. Reported
           live, 2026-10-08 ("make all option show at once"). */}
       {open && (
-        <div style={{ background: "#242424", paddingBottom: 5 }}>
+        <div
+          style={
+            floatList
+              ? { position: "absolute", top: "100%", left: horizontalPadding, right: horizontalPadding, background: "#242424", paddingBottom: 5, zIndex: 20 }
+              : { background: "#242424", paddingBottom: 5 }
+          }
+        >
           {/* paddingLeft, not a literal leading space character -- a plain
               " " gets collapsed away entirely by the browser's own
               white-space:normal rules regardless of how it got into the
@@ -211,17 +237,22 @@ export default function MapMenuPanel({
   onSportTypeChange,
   demographicCategory,
   onDemographicCategoryChange,
+  view,
+  onViewChange,
 }: {
   open: boolean;
   sportType: SportTypeValue | null;
   onSportTypeChange: (value: SportTypeValue | null) => void;
   demographicCategory: DemographicCategoryValue | null;
   onDemographicCategoryChange: (value: DemographicCategoryValue | null) => void;
+  // Lifted to the parent page -- it decides whether to render the map
+  // panes or DashboardView based on this. Per project owner instruction,
+  // 2026-10-14 ("design the dashboard view... click on the map [icon] to
+  // go to the normal map view").
+  view: "map" | "charts";
+  onViewChange: (view: "map" | "charts") => void;
 }) {
   const [activeSection, setActiveSection] = useState<SectionId>("recreation");
-  // Purely cosmetic -- neither button is wired to real map/charts behavior
-  // yet. Per project owner instruction, 2026-10-05.
-  const [activeButton, setActiveButton] = useState<"map" | "charts">("map");
 
   // The outer element here IS both the flex-basis-animated AND the
   // overflow:hidden element -- that combination is what actually makes the
@@ -273,12 +304,12 @@ export default function MapMenuPanel({
 
           <div style={{ display: "flex", flexShrink: 0 }}>
             {(["map", "charts"] as const).map((id) => {
-              const isActive = activeButton === id;
+              const isActive = view === id;
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setActiveButton(id)}
+                  onClick={() => onViewChange(id)}
                   aria-label={id === "map" ? "Map" : "Charts"}
                   style={{
                     flex: 1,
@@ -286,8 +317,12 @@ export default function MapMenuPanel({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    background: isActive ? "#fff" : "transparent",
-                    color: isActive ? "#000" : "#fff",
+                    // Matches the Learn More page's own selected-tab style
+                    // (MethodologyMenuPanel's active row), not an inverted
+                    // white/black swap. Per project owner instruction,
+                    // 2026-10-14.
+                    background: isActive ? "#242424" : "transparent",
+                    color: "#fff",
                     border: "none",
                     borderTop: "1px solid #333",
                     cursor: "pointer",

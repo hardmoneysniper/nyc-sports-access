@@ -62,8 +62,7 @@ const SECTIONS: DataSourceSection[] = [
       "This is what we actually simulate for every trip: real bus, subway, and ferry schedules laid over the real street and path network, so a travel time reflects what a rider would really experience -- walking, waiting, and riding -- not just a straight line between two points.",
     rows: [
       { source: "Street network", href: "https://data.cityofnewyork.us/City-Government/LION/2v4z-66xt/about_data" },
-      { source: "NYCT Bus", href: "https://www.mta.info/developers" },
-      { source: "Static GTFS", href: "https://www.mta.info/developers" },
+      { source: "NYCT Bus Static GTFS", href: "https://www.mta.info/developers" },
     ],
   },
 ];

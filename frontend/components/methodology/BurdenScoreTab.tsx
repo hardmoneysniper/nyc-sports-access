@@ -79,7 +79,7 @@ function Prose({ children, style }: { children: ReactNode; style?: CSSProperties
 
 export default function BurdenScoreTab() {
   const data = useRegressionData();
-  const activeIndex = useAutoLoop(REGRESSION_SCENE_COUNT, 2000);
+  const activeIndex = useAutoLoop(REGRESSION_SCENE_COUNT, 5000);
 
   const points: ScatterPoint[] = (data ?? []).map((d) => ({ id: d.id, x: Math.log(d.density), y: d.travelTime }));
   const elmhurst = (data ?? []).find((d) => d.id === ELMHURST_ID) ?? null;

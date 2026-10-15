@@ -52,6 +52,8 @@ next-env.d.ts
 !/public/data/routes/QN0401_soccer_weekday_evening.geojson
 /public/data/tracts/*
 !/public/data/tracts/QN0401.geojson
+!/public/data/tracts/QN0401_boundary.geojson
+!/public/data/tracts/QN0401_origins.geojson
 /public/data/facilities/*
 !/public/data/facilities/soccer.geojson
 /public/data/nta_boundaries.geojson
