@@ -8,16 +8,9 @@ export type ScatterPoint = { id: string; x: number; y: number };
 const PAD_LEFT = 56;
 const PAD_BOTTOM = 40;
 const PAD_TOP = 24;
-// A small, square-friendly margin. Making this big enough to hold the
-// label inline distorted the plot into a tall narrow rectangle; clamping
-// the label's own x position to stay inside the canvas instead let it
-// drift left of the point it's labeling when that point sits near the
-// domain's edge. Neither preserved both "square plot" and "label strictly
-// to the point's right, same position everywhere" at once, so the SVG
-// goes back to overflow:visible (below) and lets the label spill into the
-// page's own margin around the (now appropriately small, centered)
-// diagram instead. Reported live, 2026-10-05.
 const PAD_RIGHT = 16;
+// Keep right-hand point annotations inside the scaled SVG canvas.
+const ANNOTATION_SPACE = 140;
 
 function niceTicks(domain: [number, number], count: number): number[] {
   const [lo, hi] = domain;
@@ -121,7 +114,7 @@ export default function ScatterPlot({
   const expectedY = expectedSource && fittedLine ? fittedLine.intercept + fittedLine.slope * expectedSource.x : null;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%", height: "auto", overflow: "visible" }}>
+    <svg viewBox={`0 0 ${width + ANNOTATION_SPACE} ${height}`} style={{ display: "block", width: "100%", height: "100%" }}>
       {/* axes */}
       <line x1={PAD_LEFT} y1={PAD_TOP} x2={PAD_LEFT} y2={PAD_TOP + plotH} stroke="#fff" strokeOpacity={0.4} />
       <line

@@ -20,6 +20,7 @@ import {
   DIMMED_FILL_OPACITY,
 } from "@/lib/mapboxConfig";
 import { featureCollectionBounds, geometryBounds } from "@/lib/geoBounds";
+import { rankInvestmentPriorities } from "@/lib/investmentPriorities";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -87,14 +88,21 @@ type Props = {
   // disabled, but the map/source/layers themselves stay mounted. Per
   // project owner instruction, 2026-10-05.
   baseOnly?: boolean;
+  highlightPriorities?: boolean;
 };
 
 function colorizeGeojson(
   data: GeoJSON.FeatureCollection,
   valueProperty: string | null,
   binEdges: number[] | null,
-  colorMode: "quantile" | "positiveQuantile"
+  colorMode: "quantile" | "positiveQuantile",
+  highlightPriorities = false
 ): GeoJSON.FeatureCollection {
+  const priorityIds = new Set(
+    highlightPriorities && valueProperty
+      ? rankInvestmentPriorities(data, valueProperty).map((row) => row.id)
+      : []
+  );
   return {
     ...data,
     features: data.features.map((f) => {
@@ -112,7 +120,7 @@ function colorizeGeojson(
       return {
         ...f,
         id: ntaCodeToFeatureId(ntaCode),
-        properties: { ...f.properties, _fillColor: fillColor, _noData: isNoData },
+        properties: { ...f.properties, _fillColor: fillColor, _noData: isNoData, _priority: priorityIds.has(ntaCode) },
       };
     }),
   };
@@ -156,6 +164,7 @@ export default function InteractiveMap({
   onHover,
   onNtaClick,
   baseOnly,
+  highlightPriorities = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -178,10 +187,10 @@ export default function InteractiveMap({
   // valueProperty/binEdges/callbacks can all change after those run once.
   // Updated in an effect (post-render), not during render itself, per
   // react-hooks/refs.
-  const coloringRef = useRef({ valueProperty, binEdges, colorMode, baseOnly });
+  const coloringRef = useRef({ valueProperty, binEdges, colorMode, baseOnly, highlightPriorities });
   useEffect(() => {
-    coloringRef.current = { valueProperty, binEdges, colorMode, baseOnly };
-  }, [valueProperty, binEdges, colorMode, baseOnly]);
+    coloringRef.current = { valueProperty, binEdges, colorMode, baseOnly, highlightPriorities };
+  }, [valueProperty, binEdges, colorMode, baseOnly, highlightPriorities]);
 
   const callbacksRef = useRef({ onMapReady, onFeatureIdsReady, onHover, onNtaClick });
   useEffect(() => {
@@ -217,8 +226,8 @@ export default function InteractiveMap({
     const applyData = () => {
       const raw = rawGeojsonRef.current;
       if (!raw) return;
-      const { valueProperty: vp, binEdges: be, colorMode: cm } = coloringRef.current;
-      const colored = colorizeGeojson(raw, vp, be, cm);
+      const { valueProperty: vp, binEdges: be, colorMode: cm, highlightPriorities: hp } = coloringRef.current;
+      const colored = colorizeGeojson(raw, vp, be, cm, hp);
       const source = map.getSource(NTA_SOURCE_ID) as GeoJSONSource | undefined;
       if (source) {
         source.setData(colored as GeoJSON.GeoJSON);
@@ -268,6 +277,13 @@ export default function InteractiveMap({
           ],
           "line-width-transition": { duration: LINE_WIDTH_TRANSITION_MS },
         },
+      });
+      map.addLayer({
+        id: "ntas-investment-priorities",
+        type: "line",
+        source: NTA_SOURCE_ID,
+        filter: ["==", ["get", "_priority"], true],
+        paint: { "line-color": "#f5c65d", "line-width": 2.5 },
       });
       layersReadyRef.current = true;
 
@@ -376,9 +392,9 @@ export default function InteractiveMap({
     if (!map || !raw) return;
     const source = map.getSource(NTA_SOURCE_ID) as GeoJSONSource | undefined;
     if (!source) return;
-    source.setData(colorizeGeojson(raw, valueProperty, binEdges, colorMode) as GeoJSON.GeoJSON);
+    source.setData(colorizeGeojson(raw, valueProperty, binEdges, colorMode, highlightPriorities) as GeoJSON.GeoJSON);
     map.setPaintProperty(NTA_FILL_LAYER_ID, "fill-opacity", fillOpacityExpression(!!(valueProperty && binEdges)));
-  }, [valueProperty, binEdges, colorMode]);
+  }, [valueProperty, binEdges, colorMode, highlightPriorities]);
 
   return <div ref={containerRef} style={{ height: "100%", width: "100%" }} />;
 }

@@ -8,6 +8,7 @@ import { PERCENT_BIN_EDGES, BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_BAND_LABELS, p
 import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 import { featureCollectionBounds, zoomToFitBounds } from "@/lib/geoBounds";
+import { rankInvestmentPriorities, type InvestmentPriority } from "@/lib/investmentPriorities";
 import { withBasePath } from "@/lib/basePath";
 import type { SlotId, MapView, HoverInfo, ClickInfo } from "@/components/InteractiveMap";
 import MapPageSidebar, { SIDEBAR_WIDTH } from "@/components/MapPageSidebar";
@@ -129,8 +130,10 @@ function NtaTooltip({ info }: { info: TooltipInfo }) {
 
 export default function ExplorePage() {
   const { demographicCategory, setDemographicCategory, sportType, setSportType } = useSelection();
+  const [highlightPriorities, setHighlightPriorities] = useState(false);
   const [menuOpen, setMenuOpen] = useState(true);
   const [view, setView] = useState<"map" | "charts">("map");
+  const [priorities, setPriorities] = useState<{ property: string; rows: InvestmentPriority[] } | null>(null);
   const [burdenBinEdges, setBurdenBinEdges] = useState<number[] | null>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
@@ -247,8 +250,14 @@ export default function ExplorePage() {
     }
   }, []);
 
+  const canShowStats = useCallback((slot: SlotId, ntaCode: string) =>
+    slot === "demographics" || !highlightPriorities || !sportType ||
+    (priorities?.property === valueProperty && priorities.rows.some((row) => row.id === ntaCode)),
+  [highlightPriorities, sportType, priorities, valueProperty]);
+
   const handleHover = useCallback(
     (slot: SlotId, info: HoverInfo | null) => {
+      if (info && !canShowStats(slot, info.ntaCode)) info = null;
       const prevHoverId = hoveredIdRef.current;
       if (info) {
         if (prevHoverId && prevHoverId !== info.ntaCode) applyFeatureState(prevHoverId, "hover", false);
@@ -269,13 +278,13 @@ export default function ExplorePage() {
       // tooltip instead of just hiding it. Per project owner instruction,
       // 2026-09-27 ("only 1 window ... the difference is hover doesn't
       // magnify and clicking does").
-      if (selectedIdRef.current && selectedSlotRef.current && selectedInfoRef.current) {
+      if (selectedIdRef.current && selectedSlotRef.current && canShowStats(selectedSlotRef.current, selectedIdRef.current) && selectedInfoRef.current) {
         setTooltip({ slot: selectedSlotRef.current, ntaCode: selectedIdRef.current, ...selectedInfoRef.current });
       } else {
         setTooltip(null);
       }
     },
-    [applyFeatureState, demographicCategory, sportType]
+    [applyFeatureState, demographicCategory, sportType, canShowStats]
   );
 
   const handleNtaClick = useCallback(
@@ -420,6 +429,7 @@ export default function ExplorePage() {
         // soccer -- the equal-WIDTH experiment was reverted. Per project
         // owner instruction, 2026-09-29.
         setBurdenBinEdges(positiveQuantileBinEdges(values));
+        setPriorities({ property: valueProperty, rows: rankInvestmentPriorities(data, valueProperty) });
       });
     return () => {
       cancelled = true;
@@ -435,6 +445,12 @@ export default function ExplorePage() {
       <MapMenuPanel
         open={menuOpen}
         sportType={sportType}
+        priorityRows={priorities?.property === valueProperty ? priorities.rows : null}
+        highlightPriorities={highlightPriorities && !!sportType}
+        onHighlightPrioritiesChange={(enabled) => {
+          setHighlightPriorities(enabled);
+          if (enabled) setView("map");
+        }}
         onSportTypeChange={setSportType}
         demographicCategory={demographicCategory}
         onDemographicCategoryChange={setDemographicCategory}
@@ -497,6 +513,7 @@ export default function ExplorePage() {
               binEdges={sportType ? burdenBinEdges : null}
               colorMode="positiveQuantile"
               baseOnly={!sportType}
+              highlightPriorities={highlightPriorities && !!sportType}
               onMapReady={handleMapReady}
               onFeatureIdsReady={handleFeatureIdsReady}
               onHover={handleHover}
@@ -505,7 +522,7 @@ export default function ExplorePage() {
             {sportType && burdenBinEdges && (
               <MapLegend title={`${sportLabel} Access Burden (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
             )}
-            {tooltip?.slot === "travel-time" && <NtaTooltip info={tooltip} />}
+            {tooltip?.slot === "travel-time" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
           </div>
           {demographicCategory && (
             <div style={{ flex: 1, height: "100%", position: "relative" }}>
@@ -524,7 +541,7 @@ export default function ExplorePage() {
                 colors={BIN_COLORS}
                 labels={PERCENT_BIN_EDGES.slice(1).map((edge) => String(edge))}
               />
-              {tooltip?.slot === "demographics" && <NtaTooltip info={tooltip} />}
+              {tooltip?.slot === "demographics" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
             </div>
           )}
         </div>

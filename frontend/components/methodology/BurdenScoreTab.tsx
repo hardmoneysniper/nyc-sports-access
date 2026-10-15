@@ -21,19 +21,10 @@ const ELMHURST_ID = "QN0401";
 // Internal SVG coordinate system only -- the rendered size is controlled
 // by SplitPanel's bordered box (CSS), not this value directly.
 const CHART_SIZE = 400;
-// Caps the box's own width so it hugs the chart (plus room for the
-// Elmhurst label to spill right of it) instead of stretching to the full
-// half-column width and leaving dead space below a smaller diagram. Widened
-// a little further so its right edge lines up with the full-width intro
-// paragraph above this section. Reported live, 2026-10-08 ("align to the
-// text above").
-const BOX_MAX_WIDTH = CHART_SIZE + 170;
-// Height the box resolves to at BOX_MAX_WIDTH (via the aspectRatio string
-// below) -- just the chart plus a comfortable bottom margin, instead of
-// the 1:1 ratio's old height equal to the (now wider) box width. Reported
-// live, 2026-10-08 ("reduce the height... to fit the animation with a
-// comfortable padding").
-const BOX_HEIGHT = CHART_SIZE + 48;
+// Give the chart more room while preserving its proportions and the
+// equal outer padding around its complete SVG canvas.
+const BOX_MAX_WIDTH = 760;
+const BOX_HEIGHT = 597;
 
 type NtaDatum = { id: string; name: string; density: number; population: number; travelTime: number };
 
@@ -114,21 +105,15 @@ export default function BurdenScoreTab() {
       }
     : null;
 
-  // Caps each scene's rendered chart at its own native square size rather
-  // than letting it stretch to fill the (now wider-than-square) box.
-  // marginRight:"auto" (not SplitPanel's default centering) anchors the
-  // chart to the box's LEFT edge, so every pixel of extra box width goes
-  // to the label's side instead of being split evenly on both sides --
-  // centering wasted half of any width increase on a left gap the label
-  // never used. Reported live, 2026-10-08 ("still protruding... increase
-  // the width of the containing box to the left").
+  // Scale the complete chart, including annotation space, inside equal
+  // padding instead of letting a fixed-size SVG overflow a shorter box.
   function chartScene(node: ReactNode) {
-    return <div style={{ width: CHART_SIZE, maxWidth: "100%", marginLeft: 30, marginTop: 15 ,marginRight: "auto" }}>{node}</div>;
+    return <div style={{ width: "100%", height: "100%", padding: 24, boxSizing: "border-box" }}>{node}</div>;
   }
 
   return (
     <div>
-      <h1 style={{ fontSize: 48, fontWeight: 700, margin: 0 }}>Burden Score</h1>
+      <h1 style={{ fontSize: 48, fontWeight: 700, margin: 0 }}>Access Burden Score</h1>
 
       <Prose>
         Our score identifies neighborhoods where residents face longer trips to public sports facilities than
@@ -146,7 +131,7 @@ export default function BurdenScoreTab() {
             activeIndex={activeIndex}
             aspectRatio={`${BOX_MAX_WIDTH} / ${BOX_HEIGHT}`}
             boxMaxWidth={BOX_MAX_WIDTH}
-            sceneBottomPadding={32}
+            rightFlex={2}
             scenes={[
               chartScene(<ScatterPlot key="s0" {...commonChartProps} />),
               chartScene(

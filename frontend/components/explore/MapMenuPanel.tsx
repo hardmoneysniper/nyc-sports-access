@@ -1,5 +1,6 @@
 "use client";
 
+import type { InvestmentPriority } from "@/lib/investmentPriorities";
 import { useEffect, useRef, useState } from "react";
 import {
   DEMOGRAPHIC_CATEGORIES,
@@ -202,7 +203,8 @@ function AccordionSection({
           flexShrink: active ? 0 : 1,
           flexBasis: 0,
           minHeight: 0,
-          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: active ? "auto" : "hidden",
           transition: "flex-grow 300ms ease",
         }}
       >
@@ -235,11 +237,17 @@ export default function MapMenuPanel({
   open,
   sportType,
   onSportTypeChange,
+  highlightPriorities,
+  priorityRows,
+  onHighlightPrioritiesChange,
   demographicCategory,
   onDemographicCategoryChange,
   view,
   onViewChange,
 }: {
+  priorityRows: InvestmentPriority[] | null;
+  highlightPriorities: boolean;
+  onHighlightPrioritiesChange: (enabled: boolean) => void;
   open: boolean;
   sportType: SportTypeValue | null;
   onSportTypeChange: (value: SportTypeValue | null) => void;
@@ -286,6 +294,41 @@ export default function MapMenuPanel({
               options={SPORT_TYPES}
               placeholder="Select sports facility"
             />
+            {view === "map" && (
+            <div style={{ margin: "24px 28px 0", opacity: sportType ? 1 : 0.45 }}>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={highlightPriorities}
+                disabled={!sportType}
+                onClick={() => onHighlightPrioritiesChange(!highlightPriorities)}
+                style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: 0, border: 0, background: "none", color: "#fff", textAlign: "left", cursor: sportType ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+              >
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>Highlight 10 most<br />underserved neighborhoods</span>
+                <span aria-hidden="true" style={{ width: 34, height: 20, borderRadius: 10, background: highlightPriorities ? "#f5c65d" : "#444", padding: 3, boxSizing: "border-box", flexShrink: 0, transition: "background 180ms" }}>
+                  <span style={{ display: "block", width: 14, height: 14, borderRadius: "50%", background: highlightPriorities ? "#111" : "#fff", transform: highlightPriorities ? "translateX(14px)" : "none", transition: "transform 180ms" }} />
+                </span>
+              </button>
+              {highlightPriorities && (
+                <div style={{ marginTop: 16, paddingBottom: 20 }}>
+                  {priorityRows === null ? <p role="status" style={{ fontSize: 12 }}>Loading neighborhoods…</p> : (
+                    <table aria-label="Top 10 neighborhoods by Access Burden Score" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, lineHeight: 1.45, color: "#fff", tableLayout: "fixed" }}>
+                      <thead><tr style={{ borderBottom: "1px solid #555" }}>
+                        <th scope="col" style={{ textAlign: "left", padding: "0 8px 10px 0", fontWeight: 600 }}>Neighborhood</th>
+                        <th scope="col" style={{ width: 62, textAlign: "right", paddingBottom: 10, fontWeight: 600 }}>Score</th>
+                      </tr></thead>
+                      <tbody>{priorityRows.map((row) => (
+                        <tr key={row.id} style={{ borderBottom: "1px solid #292929" }}>
+                          <td style={{ padding: "10px 8px 10px 0", overflowWrap: "anywhere" }}>{row.name}</td>
+                          <td style={{ padding: "10px 0", textAlign: "right", verticalAlign: "top", fontVariantNumeric: "tabular-nums", color: "#f5c65d" }}>{row.score.toLocaleString(undefined, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
           </AccordionSection>
 
           <div style={{ borderTop: "1px solid #333" }} />

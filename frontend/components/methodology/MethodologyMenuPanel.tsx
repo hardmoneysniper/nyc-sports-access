@@ -24,7 +24,7 @@ export type MethodologyTab = "travel-time" | "burden-score" | "data-source";
 export const PANEL_WIDTH = 288;
 
 const ITEMS: { id: MethodologyTab; label: string }[] = [
-  { id: "travel-time", label: "Travel Time" },
+  { id: "travel-time", label: "Travel Time Calculation" },
   { id: "burden-score", label: "Burden Score" },
   { id: "data-source", label: "Data Source" },
 ];
