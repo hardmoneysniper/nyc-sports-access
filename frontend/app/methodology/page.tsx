@@ -96,7 +96,15 @@ export default function MethodologyPage() {
           </>
         )}
       </button>
-      <div style={{ flex: 1, height: "100%", overflowY: "auto", color: "#fff", padding: "64px 80px 120px" }}>
+      {/* overscrollBehavior scoped to this specific internal scroll pane
+          (not a global html/body rule) -- applying it globally (tried
+          first) broke normal scrolling on the landing page entirely,
+          which scrolls the document/body itself rather than an inner
+          overflow:auto pane like this one. Per project owner instruction,
+          2026-10-14 ("I can't scroll the landing page... only change that
+          for the landing page to make it scrollable" [i.e. restrict the
+          fix's scope back out of it]). */}
+      <div style={{ flex: 1, height: "100%", overflowY: "auto", overscrollBehavior: "none", color: "#fff", padding: "64px 80px 120px" }}>
         {activeTab === "travel-time" && <TravelTimeTab />}
         {activeTab === "burden-score" && <BurdenScoreTab />}
         {activeTab === "data-source" && <DataSourceTab />}

@@ -333,7 +333,14 @@ export default function TravelTimeTab() {
                 />
               ))}
               {tracts!.map((t) => {
-                const [x, y] = project!(t.centroid);
+                // Same position AND style as the dots in frames 3/4 (the
+                // route's own actual first coordinate, not the raw
+                // representative_point() origin) -- those two frames were
+                // slightly offset from this one otherwise, since routes
+                // snap onto the street/transit network a short (but
+                // visible, at this map's scale) distance from the raw
+                // origin. Per project owner report, 2026-10-16.
+                const [x, y] = project!(routeStartByGeoid.get(t.geoid) ?? t.centroid);
                 return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" />;
               })}
             </svg>,
@@ -350,8 +357,10 @@ export default function TravelTimeTab() {
                 />
               ))}
               {tracts!.map((t) => {
-                const [x, y] = project!(t.centroid);
-                return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" fillOpacity={0.6} />;
+                // Same position AND full opacity as frames 3/4 -- see the
+                // comment on frame 1's dots above.
+                const [x, y] = project!(routeStartByGeoid.get(t.geoid) ?? t.centroid);
+                return <circle key={t.geoid} cx={x} cy={y} r={3} fill="#fff" />;
               })}
               {facilityCoords.map((p, i) => {
                 const [x, y] = project!(p);

@@ -211,6 +211,22 @@ export default function ExplorePage() {
 
   const handleMapReady = useCallback((slot: SlotId, map: MapboxMap | null) => {
     mapRefs.current[slot] = map;
+    // A district can already be focused on the OTHER map before this one
+    // even mounts -- e.g. clicking an NTA on the Burden Score map, then
+    // turning on a Demographic category afterward. applyFeatureState/
+    // setDimming only ever reach maps that already existed in mapRefs at
+    // the moment they were called, so this map's own copy of the
+    // "selected"/"dimmed" feature-state would otherwise start empty --
+    // every NTA shown at full, un-highlighted opacity, contradicting the
+    // already-focused state on the other map. Per project owner report,
+    // 2026-10-16 ("the demographic map is not focused on that focused
+    // district").
+    if (map && selectedIdRef.current) {
+      for (const code of allNtaCodesRef.current) {
+        map.setFeatureState({ source: NTA_SOURCE_ID, id: ntaCodeToFeatureId(code) }, { dimmed: true });
+      }
+      map.setFeatureState({ source: NTA_SOURCE_ID, id: ntaCodeToFeatureId(selectedIdRef.current) }, { selected: true });
+    }
     setMapReadyVersion((v) => v + 1);
   }, []);
 
@@ -294,6 +310,19 @@ export default function ExplorePage() {
       const otherSlot: SlotId = slot === "demographics" ? "travel-time" : "demographics";
       const otherMap = mapRefs.current[otherSlot];
 
+      // Only the ALREADY-focused NTA's own click can do anything while a
+      // district is focused -- clicking any OTHER NTA is ignored outright,
+      // rather than the seemingly more natural "just re-target focus to
+      // whichever NTA was clicked next" (which is what falling through to
+      // the fitBounds-to-new-bounds logic below would do regardless of
+      // whether something was already selected). Narrowing the focused
+      // state's interaction surface down to a single click target this
+      // way is a deliberate isolation step for a separate edge-case bug
+      // under investigation: it rules "clicking a second NTA while one is
+      // already focused" in or out as a contributing cause. Per project
+      // owner report, 2026-10-16.
+      if (selectedIdRef.current && selectedIdRef.current !== info.ntaCode) return;
+
       if (selectedIdRef.current === info.ntaCode) {
         // Toggle off -- shrink both maps back to the exact view they
         // shared right before the click, fading every NTA back to its
@@ -364,6 +393,20 @@ export default function ExplorePage() {
       mapB.setMinZoom(referenceMinZoom);
     }
 
+    // If a district is already focused (e.g. clicked on Burden Score
+    // before turning on a Demographic category), match that focused view
+    // on setup instead of letting demographics' own freshly-mounted
+    // default view become the new ground truth both maps snap to below.
+    // Per project owner report, 2026-10-16.
+    if (selectedSlotRef.current && selectedIdRef.current) {
+      const focusedMap = mapRefs.current[selectedSlotRef.current];
+      if (focusedMap) {
+        const view = { center: focusedMap.getCenter(), zoom: focusedMap.getZoom() };
+        mapA.jumpTo(view);
+        mapB.jumpTo(view);
+      }
+    }
+
     let syncSource: "a" | "b" | null = null;
     const fromA = () => {
       if (syncSource === "b") return;
@@ -410,6 +453,12 @@ export default function ExplorePage() {
       if (!map || minZoomAppliedRef.current[slot]) return;
       minZoomAppliedRef.current[slot] = true;
       map.setMinZoom(referenceMinZoom);
+      // Skip the default floor-zoom camera when a district is already
+      // focused elsewhere -- the dual-pane sync effect above takes over
+      // camera placement for that case instead, matching the already-
+      // focused view rather than snapping this newly-mounted map out to
+      // the overview scale. Per project owner report, 2026-10-16.
+      if (selectedIdRef.current) return;
       map.setZoom(referenceMinZoom);
     });
   }, [referenceMinZoom, mapReadyVersion]);
