@@ -294,7 +294,7 @@ export default function MapMenuPanel({
               options={SPORT_TYPES}
               placeholder="Select sports facility"
             />
-            {view === "map" && (
+            {view === "map" && sportType !== null && (
             <div style={{ margin: "24px 28px 0", opacity: sportType ? 1 : 0.45 }}>
               <button
                 type="button"

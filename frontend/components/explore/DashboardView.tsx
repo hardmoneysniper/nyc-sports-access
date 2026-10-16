@@ -146,15 +146,9 @@ function RankedBarChart({
             <div
               key={bar.ntaCode}
               onClick={() => onSelect(bar.ntaCode)}
-              // No hover tooltip for the already-selected bar -- it already
-              // has its name bolded in the status box and its value
-              // labeled right here, so a tooltip popping up on top of it
-              // too would just be redundant. Other, non-selected bars keep
-              // the normal hover tooltip. Per project owner instruction,
-              // 2026-10-14 ("remove the hovering-the-bar effect after
-              // clicking on an nta to highlight it").
-              onMouseMove={isSelected ? undefined : (e) => onHover({ name: shortenNtaName(bar.name), x: e.clientX, y: e.clientY })}
-              onMouseLeave={isSelected ? undefined : () => onHover(null)}
+              // Keep all hover stats hidden while any NTA is selected.
+              onMouseMove={selectedNta !== null ? undefined : (e) => onHover({ name: shortenNtaName(bar.name), x: e.clientX, y: e.clientY })}
+              onMouseLeave={selectedNta !== null ? undefined : () => onHover(null)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -259,7 +253,7 @@ function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue })
 
   const handleSelect = (ntaCode: string) => {
     setSelectedNta((prev) => (prev === ntaCode ? null : ntaCode));
-    // Selecting a bar disables its own hover handlers from here on (see
+    // Selecting a bar disables all chart hover handlers from here on (see
     // RankedBarChart), so without this the tooltip set by whatever hover
     // triggered the click would otherwise stick on screen forever --
     // onMouseLeave never fires again to clear it once disabled.
@@ -411,7 +405,7 @@ function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue })
         </>
       )}
 
-      {tooltip && (
+      {tooltip && selectedNta === null && (
         <div
           style={{
             position: "fixed",
