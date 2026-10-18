@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import MapPageSidebar, { SIDEBAR_WIDTH } from "@/components/MapPageSidebar";
 import MethodologyMenuPanel, { PANEL_WIDTH, type MethodologyTab } from "@/components/methodology/MethodologyMenuPanel";
 import TravelTimeTab from "@/components/methodology/TravelTimeTab";
@@ -48,10 +49,21 @@ function MenuArrow({ direction }: { direction: "left" | "right" }) {
 // instruction, 2026-10-05 ("it should always attach to the right edge of
 // the pop-out catalog... and move with the pop-out catalog").
 export default function MethodologyPage() {
+  return <Suspense fallback={null}><MethodologyRoute /></Suspense>;
+}
+
+function MethodologyRoute() {
+  const params = useSearchParams();
+  const tab = params.get("tab");
+  const initialTab: MethodologyTab = tab === "burden-score" || tab === "data-source" ? tab : "travel-time";
+  return <MethodologyContent key={initialTab} initialTab={initialTab} />;
+}
+
+function MethodologyContent({ initialTab }: { initialTab: MethodologyTab }) {
   // Unfolded by default, matching the new map-page catalog. Per project
   // owner instruction, 2026-10-05.
   const [menuOpen, setMenuOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<MethodologyTab>("travel-time");
+  const [activeTab, setActiveTab] = useState<MethodologyTab>(initialTab);
 
   return (
     <div style={{ position: "relative", height: "100vh", width: "100%", overflow: "hidden", display: "flex", background: "#000" }}>

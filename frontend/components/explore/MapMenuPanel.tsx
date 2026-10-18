@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { InvestmentPriority } from "@/lib/investmentPriorities";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -131,14 +132,20 @@ export function DropdownField<T extends string>({
           the sport list's full 20 options behind a scrollbar; dropped
           entirely so every option is always visible at once. Reported
           live, 2026-10-08 ("make all option show at once"). */}
-      {open && (
-        <div
-          style={
-            floatList
-              ? { position: "absolute", top: "100%", left: horizontalPadding, right: horizontalPadding, background: "#242424", paddingBottom: 5, zIndex: 20 }
-              : { background: "#242424", paddingBottom: 5 }
-          }
-        >
+      <div
+        aria-hidden={!open}
+        inert={!open}
+        style={{
+          ...(floatList ? { position: "absolute" as const, top: "100%", left: horizontalPadding, right: horizontalPadding, zIndex: 20 } : {}),
+          display: "grid",
+          gridTemplateRows: open ? "1fr" : "0fr",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: "grid-template-rows 450ms ease, opacity 300ms ease",
+        }}
+      >
+        <div style={{ minHeight: 0, overflow: "hidden" }}>
+        <div style={{ background: "#242424", paddingBottom: 5, transform: open ? "translateY(0)" : "translateY(-12px)", transition: "transform 450ms ease" }}>
           {/* paddingLeft, not a literal leading space character -- a plain
               " " gets collapsed away entirely by the browser's own
               white-space:normal rules regardless of how it got into the
@@ -155,7 +162,8 @@ export function DropdownField<T extends string>({
             </div>
           ))}
         </div>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -298,19 +306,32 @@ export default function MapMenuPanel({
             <div style={{ margin: "24px 28px 0", opacity: sportType ? 1 : 0.45 }}>
               <button
                 type="button"
-                role="switch"
-                aria-checked={highlightPriorities}
+                aria-expanded={highlightPriorities}
                 disabled={!sportType}
                 onClick={() => onHighlightPrioritiesChange(!highlightPriorities)}
                 style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: 0, border: 0, background: "none", color: "#fff", textAlign: "left", cursor: sportType ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>Highlight 10 most<br />underserved neighborhoods</span>
-                <span aria-hidden="true" style={{ width: 34, height: 20, borderRadius: 10, background: highlightPriorities ? "#f5c65d" : "#444", padding: 3, boxSizing: "border-box", flexShrink: 0, transition: "background 180ms" }}>
-                  <span style={{ display: "block", width: 14, height: 14, borderRadius: "50%", background: highlightPriorities ? "#111" : "#fff", transform: highlightPriorities ? "translateX(14px)" : "none", transition: "transform 180ms" }} />
-                </span>
+                <svg
+                  aria-hidden="true"
+                  width={22}
+                  height={22}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5 * 24 / 22}
+                  strokeLinecap="round"
+                  style={{ flexShrink: 0, transform: highlightPriorities ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 220ms ease" }}
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
               </button>
-              {highlightPriorities && (
-                <div style={{ marginTop: 16, paddingBottom: 20 }}>
+              <div
+                aria-hidden={!highlightPriorities}
+                style={{ display: "grid", gridTemplateRows: highlightPriorities ? "1fr" : "0fr", opacity: highlightPriorities ? 1 : 0, transition: "grid-template-rows 450ms ease, opacity 300ms ease" }}
+              >
+                <div style={{ minHeight: 0, overflow: "hidden" }}>
+                <div style={{ paddingTop: 16, paddingBottom: 20, transform: highlightPriorities ? "translateY(0)" : "translateY(-12px)", transition: "transform 450ms ease" }}>
                   {priorityRows === null ? <p role="status" style={{ fontSize: 12 }}>Loading neighborhoods…</p> : (
                     <table aria-label="Top 10 neighborhoods by Access Burden Score" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, lineHeight: 1.45, color: "#fff", tableLayout: "fixed" }}>
                       <thead><tr style={{ borderBottom: "1px solid #555" }}>
@@ -326,9 +347,13 @@ export default function MapMenuPanel({
                     </table>
                   )}
                 </div>
-              )}
+                </div>
+              </div>
             </div>
             )}
+            <p style={{ margin: "24px 28px", fontSize: 12, lineHeight: 1.6, color: "#aaa" }}>
+              Our <Link href="/methodology?tab=burden-score" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3 }}>Access Burden Score</Link> shows where trips to public sports facilities take longer than expected for the neighborhood’s population density. Higher scores mean greater access barriers affecting more residents.
+            </p>
           </AccordionSection>
 
           <div style={{ borderTop: "1px solid #333" }} />
