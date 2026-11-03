@@ -51,6 +51,12 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     b05002_data = fetch_acs_group("B05002")
     b05006_labels = fetch_group_labels("B05006")
     b05006_data = fetch_acs_group("B05006")
+    # Sex by Age -- added specifically for youth population (under 18),
+    # not a race/origin table like the four above. Per project owner
+    # instruction, 2026-10-31 ("the ACS 2020-2024 estimate database has
+    # youth population data").
+    b01001_labels = fetch_group_labels("B01001")
+    b01001_data = fetch_acs_group("B01001")
 
     # Real ACS labels sometimes carry a trailing colon on category rows that
     # have further sub-breakdowns (e.g. "...Hispanic or Latino:" when the
@@ -112,6 +118,24 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
         and _is_leaf_label(label, b05006_all_labels)
     }
 
+    b01001_total_var = _variable_for_label(b01001_labels, lambda l: l == "Estimate!!Total:")
+    # "Youth" = under 18, i.e. the 4 age brackets below 18 years, under
+    # BOTH the "Male:" and "Female:" branches (8 variables total) -- B01001
+    # has no single "under 18" row to select directly, only individual
+    # 5-ish-year brackets per sex. Matched on the label's exact last
+    # "!!"-segment (not a substring check) so this can't also pick up e.g.
+    # a future vintage's differently-worded adjacent bracket. Asserts
+    # exactly 8 matches (4 brackets x 2 sexes) rather than silently
+    # accepting however many the predicate happens to match, per this
+    # module's fail-loudly convention elsewhere.
+    youth_age_brackets = {"Under 5 years", "5 to 9 years", "10 to 14 years", "15 to 17 years"}
+    youth_vars = [
+        code for code, label in b01001_labels.items()
+        if label.rsplit("!!", 1)[-1] in youth_age_brackets
+    ]
+    if len(youth_vars) != 8:
+        raise ValueError(f"Expected exactly 8 B01001 youth-age-bracket variables, got {len(youth_vars)}: {youth_vars}")
+
     b03002_total = _summed_by_nta(b03002_data, b03002_total_var, tract_to_nta)
     white_alone = _summed_by_nta(b03002_data, white_alone_var, tract_to_nta)
     hispanic = _summed_by_nta(b03002_data, hispanic_var, tract_to_nta)
@@ -125,6 +149,9 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     foreign_born = _summed_by_nta(b05002_data, foreign_born_var, tract_to_nta)
 
     b05006_total = _summed_by_nta(b05006_data, b05006_total_var, tract_to_nta)
+
+    b01001_total = _summed_by_nta(b01001_data, b01001_total_var, tract_to_nta)
+    youth_population = sum(_summed_by_nta(b01001_data, v, tract_to_nta) for v in youth_vars)
 
     # NOTE: groupby("NTA2020")["estimate"].sum() produces a Series whose
     # *index* is named "NTA2020". Building a DataFrame via a dict literal
@@ -157,6 +184,14 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     result = result.merge(
         pd.DataFrame({
             "pct_immigrant": 100 * foreign_born / b05002_total,
+        }).reset_index(),
+        on="NTA2020",
+        how="outer",
+    )
+    result = result.merge(
+        pd.DataFrame({
+            "youth_population": youth_population,
+            "pct_youth": 100 * youth_population / b01001_total,
         }).reset_index(),
         on="NTA2020",
         how="outer",

@@ -158,3 +158,20 @@ CRS_PROJECTED = "EPSG:2263"    # NY State Plane ft, matches source shapefiles
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 NETWORK_DIR = DATA_DIR / "network"
 PROCESSED_DIR = DATA_DIR / "processed"
+
+# Shared across every "population-weighted average travel time to nearest
+# X facility" NTA choropleth (make_map_*_avg_travel_time.py), so the same
+# color always means the same absolute travel time across every sport's
+# map, not just within one map. Per-sport quantile bins (the original
+# approach) made each map's own legend mean something different -- two
+# sports' maps couldn't be visually compared against each other, only
+# each map against itself. These 5 edges were chosen by checking bin
+# membership counts across all 5 sports' real data: they spread
+# soccer/youth-baseball/adult-baseball (shorter trips) across the first
+# 3-4 bins and cricket/volleyball (longer trips) across the last 3-4,
+# while staying on clean round numbers rather than the data's own raw
+# quantiles. The 5th bin is open-ended (no finite upper edge) -- travel
+# time has no natural ceiling the way a percentage does. Per project
+# owner instruction, 2026-10-31 ("design a universal set of absolute
+# value intervals... in order they stay consistent on scale").
+TRAVEL_TIME_MAP_BIN_EDGES_MINUTES = [0, 15, 25, 40, 60]

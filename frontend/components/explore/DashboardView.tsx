@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { withBasePath } from "@/lib/basePath";
 import { DropdownField } from "./MapMenuPanel";
-import type { SportTypeValue } from "@/lib/selectionContext";
+import type { DemographicCategoryValue, SportTypeValue } from "@/lib/selectionContext";
+import BurdenDemographicScatter from "./BurdenDemographicScatter";
 
 // Dashboard view (2D.png) -- toggled via the map page's own "map"/"charts"
 // icon buttons (see app/explore/page.tsx). Three ranked, 1-dimensional bar
@@ -190,7 +191,13 @@ function RankedBarChart({
   );
 }
 
-export default function DashboardView({ sportType }: { sportType: SportTypeValue | null }) {
+export default function DashboardView({
+  sportType,
+  demographicCategory,
+}: {
+  sportType: SportTypeValue | null;
+  demographicCategory?: DemographicCategoryValue | null;
+}) {
   if (!sportType) {
     return (
       <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "40px 80px 120px", color: "#fff" }}>
@@ -199,6 +206,14 @@ export default function DashboardView({ sportType }: { sportType: SportTypeValue
         </div>
       </div>
     );
+  }
+
+  // Both a sport AND a demographic selected -- whichever order they were
+  // picked in -- transitions to the burden-score-vs-demographic scatter
+  // instead of the single-sport 3-bar-chart ranking view below. Per
+  // project owner instruction, 2026-11-02.
+  if (demographicCategory) {
+    return <BurdenDemographicScatter sportType={sportType} demographicCategory={demographicCategory} />;
   }
 
   return <SelectedFacilityDashboard sportType={sportType} />;

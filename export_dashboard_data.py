@@ -38,6 +38,8 @@ into one file would mean shipping a meaningful fraction of that 573MB to
 the browser on every page load; per-NTA files mean a click on one NTA only
 ever fetches that NTA's data.
 """
+import json
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -104,22 +106,73 @@ def export_travel_time():
     print(f"Wrote {output_path} ({len(merged)} NTAs, {len(group_columns)} sport types)")
 
 
-def export_burden_index():
-    """Population-conditioned access burden score (see
-    docs/SOCCER_ACCESS_BURDEN_METHODOLOGY.md for the full derivation),
-    generalized here from soccer-only to every one of
-    config.SPORT_TYPE_GROUPS' 21 display-level sport types. This is what
-    the dashboard's non-demographics map now shows, in place of raw
-    travel_time.geojson.
+def _load_merged_with_travel_time() -> pd.DataFrame:
+    """NTA table (boundaries + total_population) joined to every
+    display-level travel_time_{group} column. Shared base frame for both
+    export_burden_index() and _compute_burden_indices(), so the two never
+    build this join two different ways.
+    """
+    nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020", "NTAName", "total_population", "geometry"]]
+    times = pd.read_csv(config.PROCESSED_DIR / "nta_output_combined_time.csv")
+    merged = nta.merge(times.drop(columns=["NTAName"]), on="NTA2020", how="left")
+    for group, members in config.SPORT_TYPE_GROUPS.items():
+        member_columns = [f"travel_time_{m}" for m in members]
+        merged[f"travel_time_{group}"] = merged[member_columns].min(axis=1)
+    return merged
 
-    Per sport type: fit travel_time_{sport} ~ log(population_density) by OLS
-    across NTAs with a real value for both -- density (population per
-    square mile), not raw population, since travel time is fundamentally
-    spatial and density explains far more of its variance (verified
-    empirically, 2026-09-29: log(density) r^2=0.41 vs log(population)
-    r^2=0.23 for soccer -- two NTAs can share a population but differ
-    hugely in land area, and only density sees that). A positive residual
-    means that NTA's access is worse than its own density would predict;
+
+def _compute_residuals(merged: pd.DataFrame) -> dict[str, pd.Series]:
+    """Raw, SIGNED, UNWEIGHTED residual from travel_time_{sport} ~
+    log(population_density) by OLS, for every one of
+    config.SPORT_TYPE_GROUPS' 21 display-level sport types -- density
+    (population per square mile), not raw population, since travel time is
+    fundamentally spatial and density explains far more of its variance
+    (verified empirically, 2026-09-29: log(density) r^2=0.41 vs
+    log(population) r^2=0.23 for soccer). A positive residual means that
+    NTA's access is worse than its own density would predict; negative
+    means better.
+
+    Deliberately NOT clipped at 0 and NOT population-weighted here -- that
+    transformation (see _compute_burden_indices) is the right one for the
+    dashboard's own burden score (a population-of-10,000-units
+    prioritization metric), but the wrong one for correlating against a
+    per-capita demographic %: clipping at 0 throws away every
+    better-than-expected NTA before any correlation is run, and
+    multiplying by population conflates "how bad is access here" with "how
+    many people live here," adding variance that has nothing to do with
+    demographics. Per project owner instruction, 2026-11-02 ("use the
+    residual, only keep positive values... re-generate the linear
+    regression").
+
+    Returns one Series per group, indexed like `merged` (NOT keyed by
+    NTA2020) so callers can align it against any of merged's other columns
+    (e.g. a demographic pct_* column) positionally without a re-merge. NaN
+    wherever the sport's travel time or the NTA's population/area itself is
+    missing/zero (regression fit only on the valid subset, per sport, since
+    different sports have different unreachable NTAs).
+    """
+    log_density = np.log(_nta_density(merged).clip(lower=1e-6))
+    has_population = merged["total_population"] > 0
+
+    residual_by_group: dict[str, pd.Series] = {}
+    for group in config.SPORT_TYPE_GROUPS:
+        tt_col = f"travel_time_{group}"
+        valid = has_population & merged[tt_col].notna()
+        if valid.sum() < 10:
+            residual_by_group[group] = pd.Series(float("nan"), index=merged.index)
+            continue
+
+        slope, intercept, *_ = stats.linregress(log_density[valid], merged.loc[valid, tt_col])
+        predicted = intercept + slope * log_density
+        residual = merged[tt_col] - predicted
+        residual_by_group[group] = residual.where(valid)
+
+    return residual_by_group
+
+
+def _compute_burden_indices(merged: pd.DataFrame) -> dict[str, pd.Series]:
+    """Population-conditioned access burden score (see
+    docs/SOCCER_ACCESS_BURDEN_METHODOLOGY.md for the full derivation):
     burden_index_{sport} = max(residual, 0) * (total_population / 10_000) --
     excess person-minutes of access burden beyond what density alone
     predicts, weighted by RAW population in units of 10,000 residents (not
@@ -128,43 +181,111 @@ def export_burden_index():
     nothing about the ranking, only how large the numbers look). Weighting
     represents how many actual residents are affected, and two NTAs with
     equal population but different density represent the same number of
-    underserved people regardless of how spread out they are. NaN wherever
-    the sport's travel time or the NTA's population/area itself is
-    missing/zero (regression fit only on the valid subset, per sport,
-    since different sports have different unreachable NTAs).
+    underserved people regardless of how spread out they are.
+
+    Returns one Series per group, indexed like `merged`, same shape/NaN
+    convention as _compute_residuals (which this builds on).
     """
-    nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020", "NTAName", "total_population", "geometry"]]
-    times = pd.read_csv(config.PROCESSED_DIR / "nta_output_combined_time.csv")
-    merged = nta.merge(times.drop(columns=["NTAName"]), on="NTA2020", how="left")
+    residual_by_group = _compute_residuals(merged)
+    return {
+        group: residual.clip(lower=0) * (merged["total_population"] / 10_000)
+        for group, residual in residual_by_group.items()
+    }
 
-    for group, members in config.SPORT_TYPE_GROUPS.items():
-        member_columns = [f"travel_time_{m}" for m in members]
-        merged[f"travel_time_{group}"] = merged[member_columns].min(axis=1)
 
-    log_density = np.log(_nta_density(merged).clip(lower=1e-6))
-    has_population = merged["total_population"] > 0
+def export_burden_index():
+    """burden_index_{sport} per NTA, for all 21 sport types -- what the
+    dashboard's non-demographics map shows, in place of raw
+    travel_time.geojson. See _compute_burden_indices() for the derivation.
+    """
+    merged = _load_merged_with_travel_time()
+    burden_by_group = _compute_burden_indices(merged)
+    for group, burden in burden_by_group.items():
+        merged[f"burden_index_{group}"] = burden
 
-    burden_columns = []
-    for group in config.SPORT_TYPE_GROUPS:
-        tt_col = f"travel_time_{group}"
-        burden_col = f"burden_index_{group}"
-        burden_columns.append(burden_col)
-
-        valid = has_population & merged[tt_col].notna()
-        if valid.sum() < 10:
-            merged[burden_col] = float("nan")
-            continue
-
-        slope, intercept, *_ = stats.linregress(log_density[valid], merged.loc[valid, tt_col])
-        predicted = intercept + slope * log_density
-        residual = merged[tt_col] - predicted
-        burden = residual.clip(lower=0) * (merged["total_population"] / 10_000)
-        merged[burden_col] = burden.where(valid)
-
+    burden_columns = [f"burden_index_{g}" for g in config.SPORT_TYPE_GROUPS]
     output = merged[["NTA2020", "NTAName", "geometry"] + burden_columns]
     output_path = OUTPUT_DIR / "burden_index.geojson"
     output.to_file(output_path, driver="GeoJSON")
     print(f"Wrote {output_path} ({len(output)} NTAs, {len(burden_columns)} sport types)")
+
+
+def export_access_gap():
+    """access_gap_{sport} per NTA, for all 21 sport types -- the raw,
+    SIGNED, UNWEIGHTED residual from _compute_residuals (how much worse, in
+    minutes, an NTA's travel time is than its own density would predict;
+    negative means better than predicted). Feeds the Explore page's
+    burden-score-vs-demographic scatter (BurdenDemographicScatter.tsx),
+    which further filters to access_gap > 0 itself (see that component) --
+    exported here with its full signed range, not pre-filtered, so the
+    underlying number stays reusable for other analyses later. Deliberately
+    a SEPARATE file from burden_index.geojson, not a replacement for it --
+    burden_index (floored at 0, population-weighted) is still what the
+    Explore map and the single-sport bar-chart dashboard show; this is a
+    different, per-capita-comparable quantity, right for correlating
+    against a demographic %. Per project owner instruction, 2026-11-02 (see
+    _compute_residuals for the full rationale).
+    """
+    merged = _load_merged_with_travel_time()
+    residual_by_group = _compute_residuals(merged)
+    for group, residual in residual_by_group.items():
+        merged[f"access_gap_{group}"] = residual
+
+    gap_columns = [f"access_gap_{g}" for g in config.SPORT_TYPE_GROUPS]
+    output = merged[["NTA2020", "NTAName", "geometry"] + gap_columns]
+    output_path = OUTPUT_DIR / "access_gap.geojson"
+    output.to_file(output_path, driver="GeoJSON")
+    print(f"Wrote {output_path} ({len(output)} NTAs, {len(gap_columns)} sport types)")
+
+
+def export_access_gap_demographic_regressions():
+    """Precomputes the OLS fit (access_gap_{sport} -> pct_{demographic}),
+    restricted to NTAs with access_gap > 0 (worse than expected -- the
+    better-than-expected half of the distribution is dropped, not floored
+    to 0), for every one of the 21 sports x 6 demographic categories (up to
+    126 pairs -- some pairs fall below the n>=10 floor and are omitted). So
+    the Explore page's scatter never has to refit a line in the browser --
+    it just looks up {slope, intercept, r, n} for the current pair. Written
+    once here, at data-build time, not recomputed on every page load.
+
+    Replaces an earlier version of this export that fit against
+    burden_index (population-weighted, floored at 0) -- that produced a
+    near-flat line for almost every pair (e.g. soccer vs. immigrant %:
+    r=0.04). Refitting against the unweighted, positive-only residual
+    instead (verified in check_positive_residual_demographic_regressions.py)
+    raised 27 of 126 pairs to |r| >= 0.3, up from essentially none -- the
+    population weighting and the zero-floor were burying the actual
+    relationship, not the absence of one. Per project owner instruction,
+    2026-11-02 ("use the residual, only keep positive values... re-generate
+    the linear regression"; "Only keep non-zero points and update the
+    graphs").
+    """
+    merged = _load_merged_with_travel_time()
+    demo = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020"] + DEMOGRAPHIC_COLUMNS]
+    merged = merged.merge(demo, on="NTA2020", how="left")
+    residual_by_group = _compute_residuals(merged)
+
+    regressions: dict[str, dict[str, dict[str, float]]] = {}
+    for group, residual in residual_by_group.items():
+        regressions[group] = {}
+        positive = residual > 0
+        for demo_col in DEMOGRAPHIC_COLUMNS:
+            valid = positive & residual.notna() & merged[demo_col].notna()
+            if valid.sum() < 10:
+                continue
+            slope, intercept, r, *_ = stats.linregress(residual[valid], merged.loc[valid, demo_col])
+            regressions[group][demo_col] = {
+                "slope": slope,
+                "intercept": intercept,
+                "r": r,
+                "n": int(valid.sum()),
+            }
+
+    output_path = OUTPUT_DIR / "access_gap_demographic_regressions.json"
+    with open(output_path, "w") as f:
+        json.dump(regressions, f)
+    pair_count = sum(len(v) for v in regressions.values())
+    print(f"Wrote {output_path} ({pair_count} sport x demographic regressions)")
 
 
 def export_nta_boundaries():
@@ -222,6 +343,8 @@ def main():
     export_demographics()
     export_travel_time()
     export_burden_index()
+    export_access_gap()
+    export_access_gap_demographic_regressions()
     export_nta_boundaries()
     export_tracts_by_nta()
     export_routes_by_nta()

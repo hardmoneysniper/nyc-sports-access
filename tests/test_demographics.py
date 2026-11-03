@@ -48,6 +48,20 @@ B05006_LABELS = {
     "B05006_051E": "Estimate!!Total:!!Caribbean:!!Dominica",
     "B05006_052E": "Estimate!!Total:!!Caribbean:!!Dominican Republic",
 }
+B01001_LABELS = {
+    "B01001_001E": "Estimate!!Total:",
+    "B01001_003E": "Estimate!!Total:!!Male:!!Under 5 years",
+    "B01001_004E": "Estimate!!Total:!!Male:!!5 to 9 years",
+    "B01001_005E": "Estimate!!Total:!!Male:!!10 to 14 years",
+    "B01001_006E": "Estimate!!Total:!!Male:!!15 to 17 years",
+    # A non-youth bracket included deliberately, so the test also catches
+    # an over-broad predicate that accidentally sweeps in adult brackets.
+    "B01001_011E": "Estimate!!Total:!!Male:!!25 to 29 years",
+    "B01001_027E": "Estimate!!Total:!!Female:!!Under 5 years",
+    "B01001_028E": "Estimate!!Total:!!Female:!!5 to 9 years",
+    "B01001_029E": "Estimate!!Total:!!Female:!!10 to 14 years",
+    "B01001_030E": "Estimate!!Total:!!Female:!!15 to 17 years",
+}
 
 # The two tracts intentionally have UNEQUAL table totals (1000 vs 3000) for
 # every category table, not just B05006. With equal totals, sum-then-divide
@@ -84,12 +98,30 @@ B05006_DATA = pd.DataFrame(
         "estimate": [250.0, 70.0, 60.0, 10.0, 5.0, 400.0, 105.0, 90.0, 15.0, 8.0],
     }
 )
+B01001_VARS = [
+    "B01001_001E", "B01001_003E", "B01001_004E", "B01001_005E", "B01001_006E",
+    "B01001_011E", "B01001_027E", "B01001_028E", "B01001_029E", "B01001_030E",
+]
+B01001_DATA = pd.DataFrame(
+    {
+        "GEOID": ["36061000100"] * len(B01001_VARS) + ["36061000200"] * len(B01001_VARS),
+        "variable": B01001_VARS * 2,
+        # Tract 1 (total 1000): 4 male youth brackets 50/40/30/20, one adult
+        # bracket (25-29) 200 (should be ignored), 4 female youth brackets
+        # 45/35/25/15. Youth sum = 260.
+        # Tract 2 (total 3000): male 150/140/130/120, adult 500 (ignored),
+        # female 145/135/125/115. Youth sum = 1060.
+        "estimate": [1000.0, 50.0, 40.0, 30.0, 20.0, 200.0, 45.0, 35.0, 25.0, 15.0,
+                     3000.0, 150.0, 140.0, 130.0, 120.0, 500.0, 145.0, 135.0, 125.0, 115.0],
+    }
+)
 
 
 def _fake_fetch_group_labels(table_id):
     return {
         "B03002": B03002_LABELS, "B02001": B02001_LABELS,
         "B05002": B05002_LABELS, "B05006": B05006_LABELS,
+        "B01001": B01001_LABELS,
     }[table_id]
 
 
@@ -97,6 +129,7 @@ def _fake_fetch_acs_group(table_id):
     return {
         "B03002": B03002_DATA, "B02001": B02001_DATA,
         "B05002": B05002_DATA, "B05006": B05006_DATA,
+        "B01001": B01001_DATA,
     }[table_id]
 
 
@@ -132,6 +165,14 @@ def test_build_nta_demographics_sums_before_dividing():
     # Foreign born summed=250+900=1150, total(B05002)=1000+3000=4000 -> 28.75
     # (average would give (25+30)/2 = 27.5 -- different)
     assert row["pct_immigrant"] == pytest.approx(28.75)
+    # Youth (under 18, both sexes) summed across all 8 brackets:
+    # tract1 = 50+40+30+20+45+35+25+15 = 260, tract2 = 150+140+130+120+145+135+125+115 = 1060
+    # youth_population = 260+1060 = 1320; total(B01001) = 1000+3000 = 4000 -> 33.0
+    # (average would give (26+35.333...)/2 != 33.0 -- different; also
+    # catches an over-broad predicate, since the fixture's "25 to 29
+    # years" adult bracket (200+500=700) is deliberately excluded)
+    assert row["youth_population"] == pytest.approx(1320)
+    assert row["pct_youth"] == pytest.approx(33.0)
     # Detailed national origin: Mexico summed=60+90=150, total(B05006)=250+400=650 -> ~23.077
     assert row["pct_foreign_born_mexico"] == pytest.approx(100 * 150 / 650)
 

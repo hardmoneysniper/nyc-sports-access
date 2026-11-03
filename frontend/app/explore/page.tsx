@@ -594,7 +594,7 @@ export default function ExplorePage() {
             </div>
           )}
         </div>
-        {view === "charts" && <DashboardView sportType={sportType} />}
+        {view === "charts" && <DashboardView sportType={sportType} demographicCategory={demographicCategory} />}
       </div>
     </div>
   );

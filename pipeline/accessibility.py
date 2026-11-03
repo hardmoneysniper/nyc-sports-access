@@ -47,3 +47,44 @@ def pct_population_within_threshold(
         100 * grouped["within_threshold_population"] / grouped["total_population"]
     )
     return grouped[["pct_within_threshold"]].reset_index()
+
+
+def population_weighted_average_travel_time(
+    tract_times: pd.Series,
+    tract_to_nta: pd.DataFrame,
+    tract_population: pd.Series,
+) -> pd.DataFrame:
+    """Tract-population-weighted average travel time per NTA -- the same
+    weighting rule aggregate_travel_time.aggregate_to_nta applies during the
+    full pipeline run (§7 of METHODOLOGY.md), but operating directly on a
+    single GEOID-indexed travel-time Series (e.g. the already-combined
+    soccer travel time from tract_output_combined_time.csv) instead of that
+    function's long sport_type/window_name format, so it can be reused by a
+    standalone script without needing the full long-format tract_times
+    table in memory.
+
+    A tract missing a travel time (unreachable) is dropped from BOTH the
+    weighted sum and the population sum -- per spec, an unreachable tract
+    contributes no signal, rather than being treated as a 0-minute trip
+    that would pull the average down.
+    """
+    merged = tract_to_nta.copy()
+    merged["travel_time_minutes"] = merged["GEOID"].map(tract_times)
+    merged["population"] = merged["GEOID"].map(tract_population)
+
+    # Mirrors pct_population_within_threshold's precedent above: a missing
+    # population lookup is a data-integrity problem to fail loudly on.
+    missing_population = merged["population"].isna()
+    if missing_population.any():
+        missing_geoids = sorted(merged.loc[missing_population, "GEOID"].unique().tolist())
+        raise ValueError(f"Tracts have no population lookup: {missing_geoids}")
+
+    merged = merged.dropna(subset=["travel_time_minutes"])
+    merged["weighted_time"] = merged["travel_time_minutes"] * merged["population"]
+
+    grouped = merged.groupby("NTA2020").agg(
+        weighted_time_sum=("weighted_time", "sum"),
+        population_sum=("population", "sum"),
+    )
+    grouped["avg_travel_time_minutes"] = grouped["weighted_time_sum"] / grouped["population_sum"]
+    return grouped[["avg_travel_time_minutes"]].reset_index()
