@@ -4,6 +4,8 @@ import Link from "next/link";
 import type { InvestmentPriority } from "@/lib/investmentPriorities";
 import { useEffect, useRef, useState } from "react";
 import {
+  useSelection,
+  ACCESS_METRICS,
   DEMOGRAPHIC_CATEGORIES,
   SPORT_TYPES,
   type DemographicCategoryValue,
@@ -145,7 +147,7 @@ export function DropdownField<T extends string>({
         }}
       >
         <div style={{ minHeight: 0, overflow: "hidden" }}>
-        <div style={{ background: "#242424", paddingBottom: 5, transform: open ? "translateY(0)" : "translateY(-12px)", transition: "transform 450ms ease" }}>
+        <div style={{ background: "#363636", paddingBottom: 5, transform: open ? "translateY(0)" : "translateY(-12px)", transition: "transform 450ms ease" }}>
           {/* paddingLeft, not a literal leading space character -- a plain
               " " gets collapsed away entirely by the browser's own
               white-space:normal rules regardless of how it got into the
@@ -197,7 +199,7 @@ function AccordionSection({
       }}
     >
       <div onClick={onActivate} style={{ padding: "22px 28px", cursor: "pointer", flexShrink: 0 }}>
-        <span style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>{title}</span>
+        <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.4, color: "#fff" }}>{title}</span>
       </div>
       {/* flexBasis fixed at 0 (not "auto") -- with flexShrink:0 and a
           content-sized "auto" basis, flex-grow:0 only stops the item from
@@ -268,6 +270,7 @@ export default function MapMenuPanel({
   view: "map" | "charts";
   onViewChange: (view: "map" | "charts") => void;
 }) {
+  const { accessMetric, setAccessMetric } = useSelection();
   const [activeSection, setActiveSection] = useState<SectionId>("recreation");
 
   // The outer element here IS both the flex-basis-animated AND the
@@ -292,7 +295,7 @@ export default function MapMenuPanel({
     >
       <div style={{ width: PANEL_WIDTH, height: "100%", display: "flex", flexDirection: "column" }}>
           <AccordionSection
-            title="Access Burden Score"
+            title="Public Sport Facilities Accessibility"
             active={activeSection === "recreation"}
             onActivate={() => setActiveSection("recreation")}
           >
@@ -302,7 +305,25 @@ export default function MapMenuPanel({
               options={SPORT_TYPES}
               placeholder="Select sports facility"
             />
-            {view === "map" && sportType !== null && (
+            {sportType !== null && (
+            <div role="group" aria-label="Accessibility metric" style={{ display: "flex", gap: 8, margin: "20px 28px 0" }}>
+              {ACCESS_METRICS.map((metric) => {
+                const selected = accessMetric === metric.value;
+                return (
+                  <button
+                    key={metric.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setAccessMetric(metric.value)}
+                    style={{ flex: 1, minWidth: 0, minHeight: 64, padding: "10px 8px", border: "1px solid #555", borderRadius: 0, background: selected ? "#363636" : "#000", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 600, lineHeight: 1.4, cursor: "pointer", transition: "background 150ms ease, color 150ms ease" }}
+                  >
+                    {metric.label}
+                  </button>
+                );
+              })}
+            </div>
+            )}
+            {view === "map" && sportType !== null && accessMetric !== null && (
             <div style={{ margin: "24px 28px 0", opacity: sportType ? 1 : 0.45 }}>
               <button
                 type="button"
@@ -311,7 +332,7 @@ export default function MapMenuPanel({
                 onClick={() => onHighlightPrioritiesChange(!highlightPriorities)}
                 style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: 0, border: 0, background: "none", color: "#fff", textAlign: "left", cursor: sportType ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>Highlight 10 most<br />underserved neighborhoods</span>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>{accessMetric === "travel_time" ? <>Highlight 10 neighborhoods<br />with longest travel time</> : <>Highlight 10 most<br />underserved neighborhoods</>}</span>
                 <svg
                   aria-hidden="true"
                   width={22}
@@ -333,10 +354,10 @@ export default function MapMenuPanel({
                 <div style={{ minHeight: 0, overflow: "hidden" }}>
                 <div style={{ paddingTop: 16, paddingBottom: 20, transform: highlightPriorities ? "translateY(0)" : "translateY(-12px)", transition: "transform 450ms ease" }}>
                   {priorityRows === null ? <p role="status" style={{ fontSize: 12 }}>Loading neighborhoods…</p> : (
-                    <table aria-label="Top 10 neighborhoods by Access Burden Score" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, lineHeight: 1.45, color: "#fff", tableLayout: "fixed" }}>
+                    <table aria-label={accessMetric === "travel_time" ? "Top 10 neighborhoods by Average Travel Time" : "Top 10 neighborhoods by Access Burden Score"} style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, lineHeight: 1.45, color: "#fff", tableLayout: "fixed" }}>
                       <thead><tr style={{ borderBottom: "1px solid #555" }}>
                         <th scope="col" style={{ textAlign: "left", padding: "0 8px 10px 0", fontWeight: 600 }}>Neighborhood</th>
-                        <th scope="col" style={{ width: 62, textAlign: "right", paddingBottom: 10, fontWeight: 600 }}>Score</th>
+                        <th scope="col" style={{ width: 62, textAlign: "right", paddingBottom: 10, fontWeight: 600 }}>{accessMetric === "travel_time" ? "Minutes" : "Score"}</th>
                       </tr></thead>
                       <tbody>{priorityRows.map((row) => (
                         <tr key={row.id} style={{ borderBottom: "1px solid #292929" }}>
@@ -351,9 +372,11 @@ export default function MapMenuPanel({
               </div>
             </div>
             )}
-            <p style={{ margin: "24px 28px", fontSize: 12, lineHeight: 1.6, color: "#aaa" }}>
-              Our <Link href="/methodology?tab=burden-score" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3 }}>Access Burden Score</Link> shows where trips to public sports facilities take longer than expected for the neighborhood’s population density. Higher scores mean greater access barriers affecting more residents.
-            </p>
+            {sportType !== null && accessMetric === "burden_index" && (
+              <p style={{ margin: "24px 28px", fontSize: 12, lineHeight: 1.6, color: "#aaa" }}>
+                Our <Link href="/methodology?tab=burden-score" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3 }}>Access Burden Score</Link> shows where trips to public sports facilities take longer than expected for the neighborhood’s population density. Higher scores mean greater access barriers affecting more residents.
+              </p>
+            )}
           </AccordionSection>
 
           <div style={{ borderTop: "1px solid #333" }} />
@@ -389,7 +412,7 @@ export default function MapMenuPanel({
                     // (MethodologyMenuPanel's active row), not an inverted
                     // white/black swap. Per project owner instruction,
                     // 2026-10-14.
-                    background: isActive ? "#242424" : "transparent",
+                    background: isActive ? "#363636" : "transparent",
                     color: "#fff",
                     border: "none",
                     borderTop: "1px solid #333",

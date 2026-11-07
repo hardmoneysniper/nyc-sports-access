@@ -1,5 +1,7 @@
 "use client";
 
+import MenuTopBar from "@/components/MenuTopBar";
+
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import MapPageSidebar, { SIDEBAR_WIDTH } from "@/components/MapPageSidebar";
@@ -8,27 +10,6 @@ import TravelTimeTab from "@/components/methodology/TravelTimeTab";
 import BurdenScoreTab from "@/components/methodology/BurdenScoreTab";
 import DataSourceTab from "@/components/methodology/DataSourceTab";
 
-const SHOW_MENU_FONT_SIZE = 13;
-
-// Replaces the "‹"/"›" text glyphs the Hide/Show Menu button used to show
-// -- a font glyph's visual weight isn't geometrically centered within its
-// own character box, so the arrow read as off-center no matter how the
-// surrounding flex row was aligned. An SVG path has no such ambiguity: it's
-// centered by construction. Reported live, 2026-10-08 ("absolutely
-// centrally align the arrows for hide menu and show menu buttons").
-function MenuArrow({ direction }: { direction: "left" | "right" }) {
-  return (
-    <svg width={8} height={12} viewBox="0 0 8 12" fill="none" aria-hidden style={{ display: "block" }}>
-      <path
-        d={direction === "left" ? "M6.5 1L1.5 6L6.5 11" : "M1.5 1L6.5 6L1.5 11"}
-        stroke="#fff"
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 // Leftmost rail is the SAME MapPageSidebar as the map page (Data/About/
 // Methodology) -- not replaced. "Show Menu" (per 2B.png) pops out a
@@ -62,6 +43,7 @@ function MethodologyRoute() {
 function MethodologyContent({ initialTab }: { initialTab: MethodologyTab }) {
   // Unfolded by default, matching the new map-page catalog. Per project
   // owner instruction, 2026-10-05.
+  const [contentScrolled, setContentScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<MethodologyTab>(initialTab);
 
@@ -69,45 +51,12 @@ function MethodologyContent({ initialTab }: { initialTab: MethodologyTab }) {
     <div style={{ position: "relative", height: "100vh", width: "100%", overflow: "hidden", display: "flex", background: "#000" }}>
       <MapPageSidebar />
       <MethodologyMenuPanel open={menuOpen} activeTab={activeTab} onSelect={setActiveTab} />
-      <button
-        type="button"
-        onClick={() => setMenuOpen((v) => !v)}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: SIDEBAR_WIDTH + (menuOpen ? PANEL_WIDTH : 0),
-          transition: "left 300ms ease",
-          zIndex: 1200,
-          background: "#000",
-          color: "#fff",
-          // Matches the foldable catalog's own borders (its outer
-          // borderRight and the divider between its sections), not an
-          // unrelated stark white. Per project owner instruction,
-          // 2026-10-08 ("the same as the borders for the demographic
-          // tab").
-          border: "1px solid #333",
-          borderRadius: 2,
-          padding: "8px 12px",
-          fontSize: SHOW_MENU_FONT_SIZE,
-          fontWeight: 600,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          cursor: "pointer",
-        }}
-      >
-        {menuOpen ? (
-          <>
-            <MenuArrow direction="left" />
-            Hide Menu
-          </>
-        ) : (
-          <>
-            Show Menu
-            <MenuArrow direction="right" />
-          </>
-        )}
-      </button>
+      <MenuTopBar
+        compact={contentScrolled}
+        open={menuOpen}
+        left={SIDEBAR_WIDTH + (menuOpen ? PANEL_WIDTH : 0)}
+        onToggle={() => setMenuOpen((value) => !value)}
+      />
       {/* overscrollBehavior scoped to this specific internal scroll pane
           (not a global html/body rule) -- applying it globally (tried
           first) broke normal scrolling on the landing page entirely,
@@ -116,7 +65,7 @@ function MethodologyContent({ initialTab }: { initialTab: MethodologyTab }) {
           2026-10-14 ("I can't scroll the landing page... only change that
           for the landing page to make it scrollable" [i.e. restrict the
           fix's scope back out of it]). */}
-      <div style={{ flex: 1, height: "100%", overflowY: "auto", overscrollBehavior: "none", color: "#fff", padding: "64px 80px 120px" }}>
+      <div onScroll={(event) => setContentScrolled(event.currentTarget.scrollTop > 0)} style={{ flex: 1, minWidth: 0, height: "100%", overflowY: "auto", overscrollBehavior: "none", color: "#fff", padding: "64px 80px 120px" }}>
         {activeTab === "travel-time" && <TravelTimeTab />}
         {activeTab === "burden-score" && <BurdenScoreTab />}
         {activeTab === "data-source" && <DataSourceTab />}

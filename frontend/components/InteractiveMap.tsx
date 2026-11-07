@@ -209,6 +209,14 @@ export default function InteractiveMap({
       pitchWithRotate: false,
       touchPitch: false,
     });
+    // Hide basemap text while retaining roads, geographic features, and icons.
+    map.on("style.load", () => {
+      for (const layer of map.getStyle().layers ?? []) {
+        if (layer.type === "symbol") {
+          map.setPaintProperty(layer.id, "text-opacity", 0);
+        }
+      }
+    });
     map.touchZoomRotate.disableRotation();
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-left");
     mapRef.current = map;
@@ -310,7 +318,7 @@ export default function InteractiveMap({
         // is what tells the user there's nothing there, so the cursor
         // shouldn't promise a click will do anything. Per project owner
         // instruction, 2026-09-27.
-        map.getCanvas().style.cursor = props._noData ? "" : "pointer";
+        map.getCanvas().style.cursor = props._noData || (coloringRef.current.highlightPriorities && !props._priority) ? "" : "pointer";
         const rect = containerRef.current!.getBoundingClientRect();
         callbacksRef.current.onHover?.(slot, {
           ntaCode: props.NTA2020,
@@ -331,7 +339,7 @@ export default function InteractiveMap({
         const feature = e.features?.[0];
         if (!feature?.geometry) return;
         const props = feature.properties as NtaProperties;
-        if (props._noData) return;
+        if (props._noData || (coloringRef.current.highlightPriorities && !props._priority)) return;
         const rect = containerRef.current!.getBoundingClientRect();
         callbacksRef.current.onNtaClick?.(slot, {
           ntaCode: props.NTA2020,

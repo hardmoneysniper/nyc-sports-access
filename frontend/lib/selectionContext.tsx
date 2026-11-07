@@ -49,7 +49,15 @@ type SportType = (typeof SPORT_TYPES)[number]["value"];
 export type DemographicCategoryValue = DemographicCategory;
 export type SportTypeValue = SportType;
 
+export const ACCESS_METRICS = [
+  { value: "burden_index", label: "Access Burden Score" },
+  { value: "travel_time", label: "Average Travel Time" },
+] as const;
+export type AccessMetric = (typeof ACCESS_METRICS)[number]["value"];
+
 type SelectionContextValue = {
+  accessMetric: AccessMetric | null;
+  setAccessMetric: (value: AccessMetric | null) => void;
   demographicCategory: DemographicCategory | null;
   setDemographicCategory: (value: DemographicCategory | null) => void;
   sportType: SportType | null;
@@ -67,11 +75,12 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
   // state. Per project owner instruction, 2026-10-08 ("the default...
   // should be nothing is selected").
   const [demographicCategory, setDemographicCategory] = useState<DemographicCategory | null>(null);
+  const [accessMetric, setAccessMetric] = useState<AccessMetric | null>(null);
   const [sportType, setSportType] = useState<SportType | null>(null);
 
   return (
     <SelectionContext.Provider
-      value={{ demographicCategory, setDemographicCategory, sportType, setSportType }}
+      value={{ accessMetric, setAccessMetric, demographicCategory, setDemographicCategory, sportType, setSportType }}
     >
       {children}
     </SelectionContext.Provider>

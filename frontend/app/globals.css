@@ -83,3 +83,8 @@ a {
 .landing-scroll-arrow {
   animation: scrollArrowPulse 1.8s ease-in-out infinite;
 }
+
+/* Mouse selection uses the dot color and red guides; retain keyboard focus. */
+.scatter-point:focus:not(:focus-visible) {
+  outline: none;
+}

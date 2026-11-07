@@ -1,5 +1,7 @@
 "use client";
 
+import MenuTopBar from "@/components/MenuTopBar";
+
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -18,29 +20,8 @@ import DashboardView from "@/components/explore/DashboardView";
 
 const InteractiveMap = dynamic(() => import("@/components/InteractiveMap"), { ssr: false });
 
-const SHOW_MENU_FONT_SIZE = 13;
 
 type TooltipInfo = { slot: SlotId; ntaCode: string; lines: string[]; x: number; y: number };
-
-// Replaces the "‹"/"›" text glyphs the Hide/Show Menu button used to show
-// -- a font glyph's visual weight isn't geometrically centered within its
-// own character box, so the arrow read as off-center no matter how the
-// surrounding flex row was aligned. An SVG path has no such ambiguity: it's
-// centered by construction. Reported live, 2026-10-08 ("absolutely
-// centrally align the arrows for hide menu and show menu buttons").
-function MenuArrow({ direction }: { direction: "left" | "right" }) {
-  return (
-    <svg width={8} height={12} viewBox="0 0 8 12" fill="none" aria-hidden style={{ display: "block" }}>
-      <path
-        d={direction === "left" ? "M6.5 1L1.5 6L6.5 11" : "M1.5 1L6.5 6L1.5 11"}
-        stroke="#fff"
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 // Builds the tooltip's lines from a feature's raw properties -- the same
 // formatting is used for both hover and click, per project owner
@@ -50,7 +31,8 @@ function formatTooltipLines(
   slot: SlotId,
   properties: Record<string, unknown>,
   demographicCategory: string | null,
-  sportType: string | null
+  sportType: string | null,
+  accessMetric: "burden_index" | "travel_time" | null
 ): string[] {
   const name = (properties.NTAName as string) ?? "Unknown";
   if (slot === "demographics") {
@@ -63,11 +45,11 @@ function formatTooltipLines(
     return [name, populationLine, categoryLine];
   }
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType ?? "";
-  const burdenIndex = sportType ? (properties[`burden_index_${sportType}`] as number | null | undefined) : null;
+  const burdenIndex = sportType ? (properties[`${accessMetric}_${sportType}`] as number | null | undefined) : null;
   // Exact raw score -- the map legend colors by percentile band
   // (colorForBurdenValue, via burdenBinEdges below), but the tooltip shows
   // the precise number. Per project owner instruction, 2026-09-29.
-  const burdenLine = `${sportLabel} access burden index: ${typeof burdenIndex === "number" ? burdenIndex.toFixed(1) : "No data"}`;
+  const burdenLine = `${sportLabel} ${accessMetric === "travel_time" ? "average travel time" : "access burden score"}: ${typeof burdenIndex === "number" ? burdenIndex.toFixed(1) + (accessMetric === "travel_time" ? " min" : "") : "No data"}`;
   return [name, burdenLine];
 }
 
@@ -129,8 +111,9 @@ function NtaTooltip({ info }: { info: TooltipInfo }) {
 }
 
 export default function ExplorePage() {
-  const { demographicCategory, setDemographicCategory, sportType, setSportType } = useSelection();
+  const { demographicCategory, setDemographicCategory, sportType, setSportType, accessMetric } = useSelection();
   const [highlightPriorities, setHighlightPriorities] = useState(false);
+  const [contentScrolled, setContentScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(true);
   const [view, setView] = useState<"map" | "charts">("map");
   const [priorities, setPriorities] = useState<{ property: string; rows: InvestmentPriority[] } | null>(null);
@@ -207,7 +190,9 @@ export default function ExplorePage() {
   // the sport pane itself stays blank (baseOnly) until a sport is also
   // picked. Per project owner instruction, 2026-10-05.
   const dualSynced = demographicCategory !== null;
-  const valueProperty = sportType ? `burden_index_${sportType}` : null;
+  const metricUrl = withBasePath(`/data/${accessMetric ?? "burden_index"}.geojson`);
+  const showPriorities = highlightPriorities && accessMetric !== null;
+  const valueProperty = sportType && accessMetric ? `${accessMetric}_${sportType}` : null;
 
   const handleMapReady = useCallback((slot: SlotId, map: MapboxMap | null) => {
     mapRefs.current[slot] = map;
@@ -267,9 +252,9 @@ export default function ExplorePage() {
   }, []);
 
   const canShowStats = useCallback((slot: SlotId, ntaCode: string) =>
-    slot === "demographics" || !highlightPriorities || !sportType ||
+    slot === "demographics" || !showPriorities || !sportType ||
     (priorities?.property === valueProperty && priorities.rows.some((row) => row.id === ntaCode)),
-  [highlightPriorities, sportType, priorities, valueProperty]);
+  [showPriorities, sportType, priorities, valueProperty]);
 
   const handleHover = useCallback(
     (slot: SlotId, info: HoverInfo | null) => {
@@ -282,7 +267,7 @@ export default function ExplorePage() {
         setTooltip({
           slot,
           ntaCode: info.ntaCode,
-          lines: formatTooltipLines(slot, info.properties, demographicCategory, sportType),
+          lines: formatTooltipLines(slot, info.properties, demographicCategory, sportType, accessMetric),
           x: info.x,
           y: info.y,
         });
@@ -300,11 +285,12 @@ export default function ExplorePage() {
         setTooltip(null);
       }
     },
-    [applyFeatureState, demographicCategory, sportType, canShowStats]
+    [applyFeatureState, demographicCategory, sportType, accessMetric, canShowStats]
   );
 
   const handleNtaClick = useCallback(
     (slot: SlotId, info: ClickInfo) => {
+      if (!canShowStats(slot, info.ntaCode)) return;
       const map = mapRefs.current[slot];
       if (!map) return;
       const otherSlot: SlotId = slot === "demographics" ? "travel-time" : "demographics";
@@ -344,7 +330,7 @@ export default function ExplorePage() {
       if (selectedIdRef.current) applyFeatureState(selectedIdRef.current, "selected", false);
       selectedIdRef.current = info.ntaCode;
       selectedSlotRef.current = slot;
-      const lines = formatTooltipLines(slot, info.properties, demographicCategory, sportType);
+      const lines = formatTooltipLines(slot, info.properties, demographicCategory, sportType, accessMetric);
       selectedInfoRef.current = { lines, x: info.x, y: info.y };
       applyFeatureState(info.ntaCode, "selected", true);
       setDimming(true);
@@ -362,7 +348,7 @@ export default function ExplorePage() {
       otherMap?.fitBounds(info.bounds, { padding: 40, duration: 1200, maxZoom: MAPBOX_MAX_ZOOM });
       setTooltip({ slot, ntaCode: info.ntaCode, lines, x: info.x, y: info.y });
     },
-    [applyFeatureState, setDimming, demographicCategory, sportType]
+    [applyFeatureState, setDimming, demographicCategory, sportType, accessMetric, canShowStats]
   );
 
   // Real-time camera link between the two maps: dragging, scroll-zooming,
@@ -469,7 +455,7 @@ export default function ExplorePage() {
     // so a stale value just sits unused rather than needing a reset.
     if (!valueProperty) return;
     let cancelled = false;
-    fetch(withBasePath("/data/burden_index.geojson"))
+    fetch(metricUrl)
       .then((res) => res.json())
       .then((data: GeoJSON.FeatureCollection) => {
         if (cancelled) return;
@@ -483,7 +469,7 @@ export default function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [valueProperty]);
+  }, [valueProperty, metricUrl]);
 
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? "";
   const demographicLabel = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory)?.label ?? "";
@@ -495,7 +481,7 @@ export default function ExplorePage() {
         open={menuOpen}
         sportType={sportType}
         priorityRows={priorities?.property === valueProperty ? priorities.rows : null}
-        highlightPriorities={highlightPriorities && !!sportType}
+        highlightPriorities={showPriorities && !!sportType}
         onHighlightPrioritiesChange={(enabled) => {
           setHighlightPriorities(enabled);
           if (enabled) setView("map");
@@ -506,47 +492,14 @@ export default function ExplorePage() {
         view={view}
         onViewChange={setView}
       />
-      <button
-        type="button"
-        onClick={() => setMenuOpen((v) => !v)}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: SIDEBAR_WIDTH + (menuOpen ? PANEL_WIDTH : 0),
-          transition: "left 300ms ease",
-          zIndex: 1200,
-          background: "#000",
-          color: "#fff",
-          // Matches the foldable catalog's own borders (its outer
-          // borderRight and the divider between its two sections), not an
-          // unrelated stark white. Per project owner instruction,
-          // 2026-10-08 ("the same as the borders for the demographic
-          // tab").
-          border: "1px solid #333",
-          borderRadius: 2,
-          padding: "8px 12px",
-          fontSize: SHOW_MENU_FONT_SIZE,
-          fontWeight: 600,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          cursor: "pointer",
-        }}
-      >
-        {menuOpen ? (
-          <>
-            <MenuArrow direction="left" />
-            Hide Menu
-          </>
-        ) : (
-          <>
-            Show Menu
-            <MenuArrow direction="right" />
-          </>
-        )}
-      </button>
+      <MenuTopBar
+        compact={view === "charts" && contentScrolled}
+        open={menuOpen}
+        left={SIDEBAR_WIDTH + (menuOpen ? PANEL_WIDTH : 0)}
+        onToggle={() => setMenuOpen((value) => !value)}
+      />
 
-      <div ref={contentAreaRef} style={{ flex: 1, height: "100%", position: "relative" }}>
+      <div ref={contentAreaRef} onScrollCapture={(event) => setContentScrolled((event.target as HTMLElement).scrollTop > 0)} style={{ flex: 1, minWidth: 0, height: "100%", position: "relative", overflow: "hidden" }}>
         {/* display:none (not unmounted) while viewing charts -- the maps
             stay alive underneath so switching back to the map view doesn't
             re-fetch/re-fit everything from scratch. Per project owner
@@ -556,20 +509,21 @@ export default function ExplorePage() {
           <div style={{ flex: 1, height: "100%", position: "relative" }}>
             <InteractiveMap
               slot="travel-time"
-              geojsonUrl={withBasePath("/data/burden_index.geojson")}
+              key={accessMetric ?? "none"}
+              geojsonUrl={metricUrl}
               boundsUrl={withBasePath("/data/demographics.geojson")}
               valueProperty={valueProperty}
-              binEdges={sportType ? burdenBinEdges : null}
+              binEdges={valueProperty ? burdenBinEdges : null}
               colorMode="positiveQuantile"
-              baseOnly={!sportType}
-              highlightPriorities={highlightPriorities && !!sportType}
+              baseOnly={!valueProperty}
+              highlightPriorities={showPriorities && !!sportType}
               onMapReady={handleMapReady}
               onFeatureIdsReady={handleFeatureIdsReady}
               onHover={handleHover}
               onNtaClick={handleNtaClick}
             />
-            {sportType && burdenBinEdges && (
-              <MapLegend title={`${sportLabel} Access Burden (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
+            {sportType && accessMetric && burdenBinEdges && (
+              <MapLegend title={`${sportLabel} ${accessMetric === "travel_time" ? "Average Travel Time" : "Access Burden Score"} (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
             )}
             {tooltip?.slot === "travel-time" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
           </div>

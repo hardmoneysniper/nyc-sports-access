@@ -2,30 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { withBasePath } from "@/lib/basePath";
-import { DEMOGRAPHIC_CATEGORIES, SPORT_TYPES, type DemographicCategoryValue, type SportTypeValue } from "@/lib/selectionContext";
+import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES, type DemographicCategoryValue, type SportTypeValue } from "@/lib/selectionContext";
 
-// New chart-view page shown once BOTH a sport and a demographic category
-// are selected (replacing DashboardView's 3-bar-chart view, which only
-// covers a single sport) -- one scatterplot, each point an NTA, Access Gap
-// (x) vs. the selected demographic's % (y). Styled to match the
-// methodology page's ScatterPlot (black background, white axes/points,
-// same font sizes/padding) -- duplicated rather than importing that
-// component directly, since ScatterPlot is tightly coupled to the Burden
-// Score tab's own highlight/residual/expected-point annotations, none of
-// which apply here. Per project owner instruction, 2026-11-02.
-//
-// Plots access_gap_{sport} (export_dashboard_data.py's
-// export_access_gap(), the raw/signed/unweighted travel-time residual),
-// NOT burden_index_{sport} -- burden_index's population weighting and
-// floor-at-0 buried almost every sport/demographic relationship (soccer
-// vs. immigrant % was r=0.04 against burden_index); refit against the
-// unweighted residual it strengthened to 27 of 126 pairs at |r| >= 0.3 (see
-// check_positive_residual_demographic_regressions.py). Points are further
-// filtered to access_gap > 0 only -- an NTA at or below its density-
-// predicted travel time isn't "underserved," and keeping it at exactly 0
-// would pile a large fraction of NTAs on the y-axis for no analytical
-// reason. Per project owner instruction, 2026-11-02 ("use the residual,
-// only keep positive values... Only keep non-zero points").
+// Compare the map's population-weighted burden index with demographic percentages.
+// Keep the existing positive-only neighborhood filter; the fitted line uses
+// the same burden scores and neighborhoods as the plotted points.
 
 type BoroughCode = "MN" | "BX" | "BK" | "QN" | "SI";
 
@@ -56,12 +37,13 @@ function boroughOf(ntaCode: string): BoroughCode | null {
   return BOROUGHS.some((b) => b.value === prefix) ? (prefix as BoroughCode) : null;
 }
 
-type NtaPoint = { ntaCode: string; borough: BoroughCode | null; accessGap: number; demographicPct: number };
+type NtaPoint = { ntaCode: string; borough: BoroughCode | null; burdenIndex: number; demographicPct: number };
 
 type RegressionEntry = { slope: number; intercept: number; r: number; n: number };
 type Regressions = Record<string, Record<string, RegressionEntry>>;
 
 function useScatterData(sportType: SportTypeValue, demographicCategory: DemographicCategoryValue) {
+  const { accessMetric } = useSelection();
   const [points, setPoints] = useState<NtaPoint[] | null>(null);
   const [regressions, setRegressions] = useState<Regressions | null>(null);
 
@@ -69,27 +51,24 @@ function useScatterData(sportType: SportTypeValue, demographicCategory: Demograp
     let cancelled = false;
     Promise.all([
       fetch(withBasePath("/data/demographics.geojson")).then((r) => r.json()),
-      fetch(withBasePath("/data/access_gap.geojson")).then((r) => r.json()),
-      fetch(withBasePath("/data/access_gap_demographic_regressions.json")).then((r) => r.json()),
-    ]).then(([demo, gaps, regr]: [GeoJSON.FeatureCollection, GeoJSON.FeatureCollection, Regressions]) => {
+      fetch(withBasePath(`/data/${accessMetric}.geojson`)).then((r) => r.json()),
+      fetch(withBasePath(`/data/${accessMetric}_demographic_regressions.json`)).then((r) => r.json()),
+    ]).then(([demo, burdens, regr]: [GeoJSON.FeatureCollection, GeoJSON.FeatureCollection, Regressions]) => {
       if (cancelled) return;
-      const gapByNta = new Map<string, number>();
-      for (const f of gaps.features) {
+      const burdenByNta = new Map<string, number>();
+      for (const f of burdens.features) {
         const id = f.properties?.NTA2020 as string;
-        const v = f.properties?.[`access_gap_${sportType}`] as number | null | undefined;
-        // > 0 only -- an NTA at or below its density-predicted travel time
-        // isn't underserved, and keeping those (or the exact-0 cutoff
-        // point) would pile a large share of NTAs on the y-axis with no
-        // analytical meaning. Per project owner instruction, 2026-11-02.
-        if (typeof v === "number" && v > 0) gapByNta.set(id, v);
+        const v = f.properties?.[`${accessMetric}_${sportType}`] as number | null | undefined;
+        // Preserve the positive-only filter for underserved neighborhoods.
+        if (typeof v === "number" && v > 0) burdenByNta.set(id, v);
       }
       const parsed: NtaPoint[] = [];
       for (const f of demo.features) {
         const ntaCode = f.properties?.NTA2020 as string;
-        const gapValue = gapByNta.get(ntaCode);
+        const burdenValue = burdenByNta.get(ntaCode);
         const demoValue = f.properties?.[demographicCategory] as number | null | undefined;
-        if (typeof gapValue === "number" && typeof demoValue === "number") {
-          parsed.push({ ntaCode, borough: boroughOf(ntaCode), accessGap: gapValue, demographicPct: demoValue });
+        if (typeof burdenValue === "number" && typeof demoValue === "number") {
+          parsed.push({ ntaCode, borough: boroughOf(ntaCode), burdenIndex: burdenValue, demographicPct: demoValue });
         }
       }
       setPoints(parsed);
@@ -98,15 +77,23 @@ function useScatterData(sportType: SportTypeValue, demographicCategory: Demograp
     return () => {
       cancelled = true;
     };
-  }, [sportType, demographicCategory]);
+  }, [sportType, demographicCategory, accessMetric]);
 
   return { points, regressions };
 }
 
-function niceTicks(domain: [number, number], count: number): number[] {
-  const [lo, hi] = domain;
-  const step = (hi - lo) / (count - 1);
-  return Array.from({ length: count }, (_, i) => lo + step * i);
+// Round the metric axis to evenly spaced 1/2/5/10-based intervals.
+function metricAxis(maxValue: number) {
+  const paddedMax = Math.max(maxValue, 1) * 1.05;
+  const roughStep = paddedMax / 6;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const step = [1, 2, 5, 10].find((factor) => factor * magnitude >= roughStep)! * magnitude;
+  const intervals = Math.ceil(paddedMax / step);
+  return {
+    domain: [0, intervals * step] as [number, number],
+    ticks: Array.from({ length: intervals + 1 }, (_, i) => i * step),
+    decimals: Math.max(0, -Math.floor(Math.log10(step))),
+  };
 }
 
 const PAD_LEFT = 64;
@@ -121,6 +108,8 @@ function Scatter({
   fittedLine,
   showLine,
   selectedBorough,
+  selectedNta,
+  onSelectNta,
 }: {
   points: NtaPoint[];
   xLabel: string;
@@ -128,42 +117,39 @@ function Scatter({
   fittedLine: RegressionEntry | null;
   showLine: boolean;
   selectedBorough: BoroughCode | null;
+  selectedNta: string | null;
+  onSelectNta: (id: string) => void;
 }) {
   const width = 760;
   const height = 520;
   const plotW = width - PAD_LEFT - PAD_RIGHT;
   const plotH = height - PAD_TOP - PAD_BOTTOM;
 
-  const xDomain = useMemo<[number, number]>(() => {
-    // Always starts at 0 -- points are already filtered to accessGap > 0
-    // upstream (see useScatterData), so there's no negative range to show.
-    const values = points.map((p) => p.accessGap);
-    const hi = Math.max(...values, 1);
-    return [0, hi * 1.05];
-  }, [points]);
-  const yDomain = useMemo<[number, number]>(() => {
-    const values = points.map((p) => p.demographicPct);
-    return [0, Math.max(...values, 1) * 1.05];
-  }, [points]);
+  const xDomain: [number, number] = [0, 100];
+  const yAxis = useMemo(() => metricAxis(Math.max(...points.map((p) => p.burdenIndex), 1)), [points]);
+  const yDomain = yAxis.domain;
 
   const sx = (x: number) => PAD_LEFT + ((x - xDomain[0]) / (xDomain[1] - xDomain[0])) * plotW;
   const sy = (y: number) => PAD_TOP + plotH - ((y - yDomain[0]) / (yDomain[1] - yDomain[0])) * plotH;
 
-  const xTicks = niceTicks(xDomain, 5);
-  const yTicks = niceTicks(yDomain, 5);
+  const xTicks = [0, 20, 40, 60, 80, 100];
+  const yTicks = yAxis.ticks;
+  const visiblePoints = selectedBorough === null ? points : points.filter((p) => p.borough === selectedBorough);
+  const selectedPoint = visiblePoints.find((p) => p.ntaCode === selectedNta);
+  const orderedPoints = selectedPoint ? [...visiblePoints.filter((p) => p !== selectedPoint), selectedPoint] : visiblePoints;
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%", height: "auto", background: "#000" }}>
       <line x1={PAD_LEFT} y1={PAD_TOP} x2={PAD_LEFT} y2={PAD_TOP + plotH} stroke="#fff" strokeOpacity={0.4} />
       <line x1={PAD_LEFT} y1={PAD_TOP + plotH} x2={PAD_LEFT + plotW} y2={PAD_TOP + plotH} stroke="#fff" strokeOpacity={0.4} />
-      {xTicks.map((t) => (
+      {xTicks.filter((t) => !selectedPoint || Math.abs(sx(t) - sx(selectedPoint.demographicPct)) > 24).map((t) => (
         <text key={`xt-${t}`} x={sx(t)} y={PAD_TOP + plotH + 18} fill="#fff" fillOpacity={0.6} fontSize={11} textAnchor="middle">
           {t.toFixed(0)}
         </text>
       ))}
-      {yTicks.map((t) => (
+      {yTicks.filter((t) => !selectedPoint || Math.abs(sy(t) - sy(selectedPoint.burdenIndex)) > 14).map((t) => (
         <text key={`yt-${t}`} x={PAD_LEFT - 8} y={sy(t) + 4} fill="#fff" fillOpacity={0.6} fontSize={11} textAnchor="end">
-          {t.toFixed(0)}
+          {t.toFixed(yAxis.decimals)}
         </text>
       ))}
       <text x={PAD_LEFT + plotW / 2} y={height - 8} fill="#fff" fontSize={13} textAnchor="middle">
@@ -191,17 +177,45 @@ function Scatter({
         />
       )}
 
-      {points.map((p) => {
-        // No borough selected: every point plain white. A borough
-        // selected: that borough's points take its color (from the same
-        // palette as the article's borough scatter), everything else
-        // dims to a flat dark gray -- not a dimmed white, a genuinely
-        // different (darker) color, per project owner instruction
-        // ("others dim without color"/"dim to a darker color").
+      {selectedPoint && (
+        <g pointerEvents="none">
+          <path
+            d={`M ${PAD_LEFT} ${sy(selectedPoint.burdenIndex)} H ${sx(selectedPoint.demographicPct)} V ${PAD_TOP + plotH}`}
+            fill="none" stroke={selectedPoint.borough ? BOROUGH_COLORS[selectedPoint.borough] : "#ff5252"} strokeWidth={1.5} strokeDasharray="2 4"
+          />
+          <text x={sx(selectedPoint.demographicPct)} y={PAD_TOP + plotH + 18} fill={selectedPoint.borough ? BOROUGH_COLORS[selectedPoint.borough] : "#ff5252"} fontSize={11} fontWeight={600} textAnchor="middle">
+            {selectedPoint.demographicPct.toFixed(1)}%
+          </text>
+          <text x={PAD_LEFT - 8} y={sy(selectedPoint.burdenIndex) + 4} fill={selectedPoint.borough ? BOROUGH_COLORS[selectedPoint.borough] : "#ff5252"} fontSize={11} fontWeight={600} textAnchor="end">
+            {selectedPoint.burdenIndex.toFixed(1)}
+          </text>
+        </g>
+      )}
+      {orderedPoints.map((p) => {
+        const isSelected = p.ntaCode === selectedNta;
         const isSelectedBorough = selectedBorough !== null && p.borough === selectedBorough;
-        const isDimmed = selectedBorough !== null && !isSelectedBorough;
-        const fill = isSelectedBorough ? BOROUGH_COLORS[selectedBorough] : isDimmed ? "#444" : "#fff";
-        return <circle key={p.ntaCode} cx={sx(p.accessGap)} cy={sy(p.demographicPct)} r={3} fill={fill} fillOpacity={isDimmed ? 0.7 : 0.85} />;
+        const isDimmed = selectedPoint ? !isSelected : selectedBorough !== null && !isSelectedBorough;
+        const fill = isDimmed ? "#444" : (isSelected || isSelectedBorough) && p.borough ? BOROUGH_COLORS[p.borough] : "#fff";
+        return (
+          <g
+            key={p.ntaCode}
+            role={selectedBorough ? "button" : undefined} tabIndex={selectedBorough ? 0 : undefined}
+            aria-label={`${p.ntaCode}: ${xLabel} ${p.demographicPct.toFixed(1)}%, ${yLabel} ${p.burdenIndex.toFixed(1)}`}
+            aria-pressed={selectedBorough ? isSelected : undefined}
+            onClick={selectedBorough ? () => onSelectNta(p.ntaCode) : undefined}
+            onKeyDown={(event) => {
+              if (selectedBorough && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                onSelectNta(p.ntaCode);
+              }
+            }}
+            className="scatter-point"
+            style={{ cursor: selectedBorough ? "pointer" : "default" }}
+          >
+            <circle cx={sx(p.demographicPct)} cy={sy(p.burdenIndex)} r={8} fill="transparent" />
+            <circle cx={sx(p.demographicPct)} cy={sy(p.burdenIndex)} r={isSelected ? 4 : 3} fill={fill} fillOpacity={isDimmed ? 0.7 : 1} />
+          </g>
+        );
       })}
     </svg>
   );
@@ -214,8 +228,11 @@ export default function BurdenDemographicScatter({
   sportType: SportTypeValue;
   demographicCategory: DemographicCategoryValue;
 }) {
+  const { accessMetric } = useSelection();
+  const metricLabel = accessMetric === "travel_time" ? "Average Travel Time" : "Access Burden Score";
   const { points, regressions } = useScatterData(sportType, demographicCategory);
   const [showLine, setShowLine] = useState(false);
+  const [selectedNta, setSelectedNta] = useState<string | null>(null);
   const [selectedBorough, setSelectedBorough] = useState<BoroughCode | null>(null);
 
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType;
@@ -225,19 +242,19 @@ export default function BurdenDemographicScatter({
 
   if (!points) {
     return (
-      <div style={{ height: "100%", overflowY: "auto", padding: "40px 80px 120px", color: "#fff" }}>
-        <p style={{ color: "#777", marginTop: 40 }}>Loading data…</p>
+      <div style={{ height: "100%", overflowY: "auto", padding: "72px 80px 120px", color: "#fff" }}>
+        <p style={{ color: "#777", margin: 0 }}>Loading data…</p>
       </div>
     );
   }
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "40px 80px 120px", color: "#fff" }}>
+    <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "72px 80px 120px", color: "#fff" }}>
       <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
-        Access Gap vs. {demographicLabel} — {sportLabel}
+        {metricLabel} vs. {demographicLabel} — {sportLabel}
       </h2>
       <p style={{ fontSize: 14, color: "#ccc", marginTop: 8 }}>
-        Each point is one NTA with worse-than-expected access (travel time above what its density predicts). {points.length} NTAs shown.
+        {accessMetric === "travel_time" ? "Each point is one NTA’s population-weighted average travel time to the nearest facility, in minutes." : "Each point is one NTA with a positive access burden score (excess travel time weighted by population in units of 10,000 residents)."} {points.length} NTAs shown.
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 20, flexWrap: "wrap" }}>
@@ -253,7 +270,7 @@ export default function BurdenDemographicScatter({
             return (
               <button
                 key={b.value}
-                onClick={() => setSelectedBorough((prev) => (prev === b.value ? null : b.value))}
+                onClick={() => { setSelectedNta(null); setSelectedBorough((prev) => (prev === b.value ? null : b.value)); }}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -277,12 +294,15 @@ export default function BurdenDemographicScatter({
 
       <div style={{ marginTop: 24, maxWidth: 820 }}>
         <Scatter
+          key={`${sportType}-${demographicCategory}-${accessMetric}`}
           points={points}
-          xLabel="Access Gap (minutes beyond expected travel time)"
-          yLabel={`${demographicLabel} (%)`}
+          xLabel={`${demographicLabel} (%)`}
+          yLabel={accessMetric === "travel_time" ? "Average Travel Time (minutes)" : metricLabel}
           fittedLine={fittedLine}
           showLine={showLine}
           selectedBorough={selectedBorough}
+          selectedNta={selectedNta}
+          onSelectNta={(id) => setSelectedNta((previous) => previous === id ? null : id)}
         />
       </div>
     </div>

@@ -61,7 +61,7 @@ export default function MethodologyMenuPanel({
               style={{
                 padding: "22px 28px",
                 borderBottom: "1px solid #333",
-                background: isActive ? "#242424" : "transparent",
+                background: isActive ? "#363636" : "transparent",
                 cursor: "pointer",
               }}
             >

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { withBasePath } from "@/lib/basePath";
 import { DropdownField } from "./MapMenuPanel";
-import type { DemographicCategoryValue, SportTypeValue } from "@/lib/selectionContext";
+import { useSelection, type DemographicCategoryValue, type SportTypeValue } from "@/lib/selectionContext";
 import BurdenDemographicScatter from "./BurdenDemographicScatter";
 
 // Dashboard view (2D.png) -- toggled via the map page's own "map"/"charts"
@@ -198,11 +198,12 @@ export default function DashboardView({
   sportType: SportTypeValue | null;
   demographicCategory?: DemographicCategoryValue | null;
 }) {
-  if (!sportType) {
+  const { accessMetric } = useSelection();
+  if (!sportType || !accessMetric) {
     return (
-      <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "40px 80px 120px", color: "#fff" }}>
-        <div style={{ marginTop: 32 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Select a sports facility to view the charts</h2>
+      <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "72px 80px 120px", color: "#fff" }}>
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Select a sports facility and metric to view the charts</h2>
         </div>
       </div>
     );
@@ -220,6 +221,7 @@ export default function DashboardView({
 }
 
 function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue }) {
+  const { accessMetric } = useSelection();
   const records = useNtaData(sportType);
   const [borough, setBorough] = useState<BoroughCode | null>(null);
   const [selectedNta, setSelectedNta] = useState<string | null>(null);
@@ -244,13 +246,13 @@ function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue })
       (records ?? []).filter(
         (r) =>
           typeof r.burden === "number" &&
-          r.burden > 0 &&
+          (accessMetric === "travel_time" || r.burden > 0) &&
           typeof r.travelTime === "number" &&
           typeof r.density === "number" &&
           r.density > 0 &&
           (borough === null || r.borough === borough)
       ),
-    [records, borough]
+    [records, borough, accessMetric]
   );
 
   const burdenBars = useMemo(
@@ -312,7 +314,7 @@ function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue })
         // diagrams and the width of the box consistent across all
         // borough views").
         scrollbarGutter: "stable",
-        padding: "40px 80px 120px",
+        padding: "72px 80px 120px",
         color: "#fff",
       }}
     >
@@ -327,7 +329,7 @@ function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue })
           recalculated from the sibling's current DOM state. Per project
           owner instruction, 2026-10-14 ("don't expand when the dropdown
           menu is expanded"). */}
-      <div style={{ display: "flex", gap: 32, marginTop: 32, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: 32, alignItems: "flex-start" }}>
         <div style={{ flex: "0 0 50%" }}>
           <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Borough</h2>
           <div style={{ maxWidth: 320, marginTop: 8 }}>
@@ -415,7 +417,7 @@ function SelectedFacilityDashboard({ sportType }: { sportType: SportTypeValue })
               font size, with a leading asterisk (a footnote, not a lead-in
               sentence). Per project owner instruction, 2026-10-14. */}
           <p style={{ fontSize: 14, color: "#ccc", margin: 0, marginTop: 24 }}>
-            *Only NTAs with Access Burden Score &gt; 0 is shown here.
+            {accessMetric === "burden_index" ? "*Only NTAs with Access Burden Score > 0 are shown here." : "*NTAs with available travel time, burden score, and positive population density are shown here."}
           </p>
         </>
       )}

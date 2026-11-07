@@ -22,7 +22,7 @@ const CAROUSEL_IMAGES = [
 const TYPE_MS = 70;
 const DELETE_MS = 35;
 const PAUSE_MS = 1600;
-const WORD_GAP_MS = 250;
+const WORD_GAP_MS = 250
 
 // Black background / white text throughout, per project owner
 // instruction, 2026-09-28.

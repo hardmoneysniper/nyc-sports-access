@@ -211,21 +211,7 @@ def export_burden_index():
 
 
 def export_access_gap():
-    """access_gap_{sport} per NTA, for all 21 sport types -- the raw,
-    SIGNED, UNWEIGHTED residual from _compute_residuals (how much worse, in
-    minutes, an NTA's travel time is than its own density would predict;
-    negative means better than predicted). Feeds the Explore page's
-    burden-score-vs-demographic scatter (BurdenDemographicScatter.tsx),
-    which further filters to access_gap > 0 itself (see that component) --
-    exported here with its full signed range, not pre-filtered, so the
-    underlying number stays reusable for other analyses later. Deliberately
-    a SEPARATE file from burden_index.geojson, not a replacement for it --
-    burden_index (floored at 0, population-weighted) is still what the
-    Explore map and the single-sport bar-chart dashboard show; this is a
-    different, per-capita-comparable quantity, right for correlating
-    against a demographic %. Per project owner instruction, 2026-11-02 (see
-    _compute_residuals for the full rationale).
-    """
+    """Export signed, unweighted travel-time residuals for reuse in analyses."""
     merged = _load_merged_with_travel_time()
     residual_by_group = _compute_residuals(merged)
     for group, residual in residual_by_group.items():
@@ -238,42 +224,30 @@ def export_access_gap():
     print(f"Wrote {output_path} ({len(output)} NTAs, {len(gap_columns)} sport types)")
 
 
-def export_access_gap_demographic_regressions():
-    """Precomputes the OLS fit (access_gap_{sport} -> pct_{demographic}),
-    restricted to NTAs with access_gap > 0 (worse than expected -- the
-    better-than-expected half of the distribution is dropped, not floored
-    to 0), for every one of the 21 sports x 6 demographic categories (up to
-    126 pairs -- some pairs fall below the n>=10 floor and are omitted). So
-    the Explore page's scatter never has to refit a line in the browser --
-    it just looks up {slope, intercept, r, n} for the current pair. Written
-    once here, at data-build time, not recomputed on every page load.
+def export_burden_index_demographic_regressions(metric="burden_index"):
+    """Fit the selected accessibility metric against demographic percentage.
 
-    Replaces an earlier version of this export that fit against
-    burden_index (population-weighted, floored at 0) -- that produced a
-    near-flat line for almost every pair (e.g. soccer vs. immigrant %:
-    r=0.04). Refitting against the unweighted, positive-only residual
-    instead (verified in check_positive_residual_demographic_regressions.py)
-    raised 27 of 126 pairs to |r| >= 0.3, up from essentially none -- the
-    population weighting and the zero-floor were burying the actual
-    relationship, not the absence of one. Per project owner instruction,
-    2026-11-02 ("use the residual, only keep positive values... re-generate
-    the linear regression"; "Only keep non-zero points and update the
-    graphs").
+    Uses the same positive-only filter as the Explore scatterplot.
+    Pairs with fewer than ten observations are omitted.
     """
     merged = _load_merged_with_travel_time()
     demo = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020"] + DEMOGRAPHIC_COLUMNS]
     merged = merged.merge(demo, on="NTA2020", how="left")
-    residual_by_group = _compute_residuals(merged)
+    burden_by_group = (
+        _compute_burden_indices(merged)
+        if metric == "burden_index"
+        else {group: merged[f"travel_time_{group}"] for group in config.SPORT_TYPE_GROUPS}
+    )
 
     regressions: dict[str, dict[str, dict[str, float]]] = {}
-    for group, residual in residual_by_group.items():
+    for group, burden in burden_by_group.items():
         regressions[group] = {}
-        positive = residual > 0
+        positive = burden > 0
         for demo_col in DEMOGRAPHIC_COLUMNS:
-            valid = positive & residual.notna() & merged[demo_col].notna()
+            valid = positive & burden.notna() & merged[demo_col].notna()
             if valid.sum() < 10:
                 continue
-            slope, intercept, r, *_ = stats.linregress(residual[valid], merged.loc[valid, demo_col])
+            slope, intercept, r, *_ = stats.linregress(merged.loc[valid, demo_col], burden[valid])
             regressions[group][demo_col] = {
                 "slope": slope,
                 "intercept": intercept,
@@ -281,7 +255,7 @@ def export_access_gap_demographic_regressions():
                 "n": int(valid.sum()),
             }
 
-    output_path = OUTPUT_DIR / "access_gap_demographic_regressions.json"
+    output_path = OUTPUT_DIR / f"{metric}_demographic_regressions.json"
     with open(output_path, "w") as f:
         json.dump(regressions, f)
     pair_count = sum(len(v) for v in regressions.values())
@@ -344,7 +318,8 @@ def main():
     export_travel_time()
     export_burden_index()
     export_access_gap()
-    export_access_gap_demographic_regressions()
+    export_burden_index_demographic_regressions()
+    export_burden_index_demographic_regressions("travel_time")
     export_nta_boundaries()
     export_tracts_by_nta()
     export_routes_by_nta()
