@@ -5,8 +5,8 @@ import MenuTopBar from "@/components/MenuTopBar";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapboxMap } from "mapbox-gl";
-import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES } from "@/lib/selectionContext";
-import { PERCENT_BIN_EDGES, BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_BAND_LABELS, positiveQuantileBinEdges } from "@/lib/colorScale";
+import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES, formatDemographicValue } from "@/lib/selectionContext";
+import { BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_BAND_LABELS, positiveQuantileBinEdges, quantileBinEdges } from "@/lib/colorScale";
 import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 import { featureCollectionBounds, zoomToFitBounds } from "@/lib/geoBounds";
@@ -39,9 +39,11 @@ function formatTooltipLines(
     const totalPopulation = properties.total_population;
     const populationLine =
       typeof totalPopulation === "number" ? `Total population: ${totalPopulation.toLocaleString()}` : "Total population: No data";
-    const categoryLabel = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory)?.label ?? demographicCategory ?? "";
+    const category = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory);
     const categoryValue = demographicCategory ? properties[demographicCategory] : null;
-    const categoryLine = `${categoryLabel}: ${typeof categoryValue === "number" ? `${categoryValue.toFixed(1)}%` : "No data"}`;
+    const categoryLine = `${category?.label ?? demographicCategory ?? ""}: ${
+      typeof categoryValue === "number" && category ? formatDemographicValue(categoryValue, category.unit) : "No data"
+    }`;
     return [name, populationLine, categoryLine];
   }
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType ?? "";
@@ -118,6 +120,7 @@ export default function ExplorePage() {
   const [view, setView] = useState<"map" | "charts">("map");
   const [priorities, setPriorities] = useState<{ property: string; rows: InvestmentPriority[] } | null>(null);
   const [burdenBinEdges, setBurdenBinEdges] = useState<number[] | null>(null);
+  const [demographicBinEdges, setDemographicBinEdges] = useState<number[] | null>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
   const mapRefs = useRef<Record<SlotId, MapboxMap | null>>({ demographics: null, "travel-time": null });
@@ -471,8 +474,30 @@ export default function ExplorePage() {
     };
   }, [valueProperty, metricUrl]);
 
+  // Equal-count (quantile) bin edges, computed from the actual value
+  // range -- the old fixed PERCENT_BIN_EDGES ([0,20,40,60,80,100]) assumed
+  // every demographic category was a 0-100 percentage, which broke once
+  // median_household_income (a dollar figure, not a percentage) became
+  // selectable. Per project owner instruction, 2026-11-09.
+  useEffect(() => {
+    if (!demographicCategory) return;
+    let cancelled = false;
+    fetch(withBasePath("/data/demographics.geojson"))
+      .then((res) => res.json())
+      .then((data: GeoJSON.FeatureCollection) => {
+        if (cancelled) return;
+        const values = data.features.map((f) => f.properties?.[demographicCategory] as number | null | undefined);
+        setDemographicBinEdges(quantileBinEdges(values));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [demographicCategory]);
+
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? "";
-  const demographicLabel = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory)?.label ?? "";
+  const demographicCategoryInfo = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory);
+  const demographicLabel = demographicCategoryInfo?.label ?? "";
+  const demographicUnit = demographicCategoryInfo?.unit ?? "percent";
 
   return (
     <div style={{ position: "relative", height: "100vh", width: "100%", overflow: "hidden", display: "flex", background: "#000" }}>
@@ -533,17 +558,19 @@ export default function ExplorePage() {
                 slot="demographics"
                 geojsonUrl={withBasePath("/data/demographics.geojson")}
                 valueProperty={demographicCategory}
-                binEdges={PERCENT_BIN_EDGES}
+                binEdges={demographicBinEdges}
                 onMapReady={handleMapReady}
                 onFeatureIdsReady={handleFeatureIdsReady}
                 onHover={handleHover}
                 onNtaClick={handleNtaClick}
               />
-              <MapLegend
-                title={`${demographicLabel} (%)`}
-                colors={BIN_COLORS}
-                labels={PERCENT_BIN_EDGES.slice(1).map((edge) => String(edge))}
-              />
+              {demographicBinEdges && (
+                <MapLegend
+                  title={demographicLabel}
+                  colors={BIN_COLORS}
+                  labels={demographicBinEdges.slice(1).map((edge) => formatDemographicValue(edge, demographicUnit))}
+                />
+              )}
               {tooltip?.slot === "demographics" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
             </div>
           )}

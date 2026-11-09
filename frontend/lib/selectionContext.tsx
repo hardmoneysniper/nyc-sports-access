@@ -2,14 +2,30 @@
 
 import { createContext, useContext, useState, ReactNode } from "react";
 
+// Narrowed down from the original 6 race/ethnicity + immigrant categories
+// to just immigrant/foreign-born plus 5 new ones, ranked in this order:
+// identity (immigrant), economic hardship (poverty, income), transit
+// dependency (vehicle access -- the one most directly tied to this
+// project's own subject matter), then the two age groups most sensitive
+// to a given travel time (youth, seniors). Per project owner instruction,
+// 2026-11-09. `unit` drives how each category's values are scaled/
+// formatted on the map legend and the burden/demographic scatter (see
+// formatDemographicValue below) -- every category here is a percentage
+// except median_household_income, a dollar figure.
 export const DEMOGRAPHIC_CATEGORIES = [
-  { value: "pct_non_white", label: "Non-white" },
-  { value: "pct_hispanic_or_latino", label: "Hispanic or Latino" },
-  { value: "pct_black_or_african_american", label: "Black or African American" },
-  { value: "pct_asian", label: "Asian" },
-  { value: "pct_two_or_more_races", label: "Two or more races" },
-  { value: "pct_immigrant", label: "Immigrant / foreign-born" },
+  { value: "pct_immigrant", label: "Immigrant / foreign-born", unit: "percent" },
+  { value: "pct_poverty", label: "Poverty rate", unit: "percent" },
+  { value: "median_household_income", label: "Median household income", unit: "currency" },
+  { value: "pct_no_vehicle", label: "No vehicle access", unit: "percent" },
+  { value: "pct_youth", label: "Youth (under 18)", unit: "percent" },
+  { value: "pct_senior", label: "Seniors (65+)", unit: "percent" },
 ] as const;
+
+export type DemographicUnit = (typeof DEMOGRAPHIC_CATEGORIES)[number]["unit"];
+
+export function formatDemographicValue(value: number, unit: DemographicUnit): string {
+  return unit === "currency" ? `$${Math.round(value).toLocaleString()}` : `${value.toFixed(1)}%`;
+}
 
 // Matches pipeline.config.SPORT_TYPE_GROUPS' keys -- display-level
 // categories, not the 24 raw shapefile sport-type columns. Some of these

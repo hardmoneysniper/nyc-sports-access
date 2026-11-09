@@ -3,9 +3,6 @@
 export const BIN_COLORS = ["#bdd7e7", "#6baed6", "#3182bd", "#08519c", "#08306b"];
 export const NO_DATA_COLOR = "#898781";
 
-// Fixed equal-width bins for 0-100 percentage values (demographics page).
-export const PERCENT_BIN_EDGES = [0, 20, 40, 60, 80, 100];
-
 /** binEdges has length 6 (5 bin boundaries + 1), producing 5 bins. */
 export function colorForValue(value: number | null | undefined, binEdges: number[]): string {
   if (value === null || value === undefined || Number.isNaN(value)) {

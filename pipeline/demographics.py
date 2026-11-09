@@ -54,9 +54,20 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     # Sex by Age -- added specifically for youth population (under 18),
     # not a race/origin table like the four above. Per project owner
     # instruction, 2026-10-31 ("the ACS 2020-2024 estimate database has
-    # youth population data").
+    # youth population data"). Reused again below for seniors (65+), since
+    # it's the same table, just the brackets at the other end.
     b01001_labels = fetch_group_labels("B01001")
     b01001_data = fetch_acs_group("B01001")
+    # Poverty Status in the Past 12 Months by Sex by Age -- added per
+    # project owner instruction, 2026-11-09 ("add poverty... rank them").
+    b17001_labels = fetch_group_labels("B17001")
+    b17001_data = fetch_acs_group("B17001")
+    # Tenure by Vehicles Available -- "no vehicle available" households, a
+    # transit-dependency indicator thematically tied to this project's own
+    # travel-time measurements. Added per project owner instruction,
+    # 2026-11-09.
+    b25044_labels = fetch_group_labels("B25044")
+    b25044_data = fetch_acs_group("B25044")
 
     # Real ACS labels sometimes carry a trailing colon on category rows that
     # have further sub-breakdowns (e.g. "...Hispanic or Latino:" when the
@@ -136,6 +147,43 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
     if len(youth_vars) != 8:
         raise ValueError(f"Expected exactly 8 B01001 youth-age-bracket variables, got {len(youth_vars)}: {youth_vars}")
 
+    # "Senior" = 65+, i.e. the 6 age brackets from "65 and 66 years" up
+    # through "85 years and over," under both "Male:" and "Female:" (12
+    # variables total) -- same table, same matching convention as
+    # youth_vars above, just the brackets at the other end of the age
+    # distribution. Confirmed against the live B01001 label set, 2026-11-09.
+    senior_age_brackets = {
+        "65 and 66 years", "67 to 69 years", "70 to 74 years",
+        "75 to 79 years", "80 to 84 years", "85 years and over",
+    }
+    senior_vars = [
+        code for code, label in b01001_labels.items()
+        if label.rsplit("!!", 1)[-1] in senior_age_brackets
+    ]
+    if len(senior_vars) != 12:
+        raise ValueError(f"Expected exactly 12 B01001 senior-age-bracket variables, got {len(senior_vars)}: {senior_vars}")
+
+    b17001_total_var = _variable_for_label(b17001_labels, lambda l: l == "Estimate!!Total:")
+    # The table's own "below poverty level" subtotal row -- not one of its
+    # per-age-bracket children (those nest one level deeper, under this
+    # row). Matched on the exact last "!!"-segment, same convention as
+    # every other predicate in this module.
+    below_poverty_var = _variable_for_label(
+        b17001_labels,
+        lambda l: l.rstrip(":").rsplit("!!", 1)[-1] == "Income in the past 12 months below poverty level",
+    )
+
+    b25044_total_var = _variable_for_label(b25044_labels, lambda l: l == "Estimate!!Total:")
+    # "No vehicle available" appears twice -- once under "Owner occupied:"
+    # and once under "Renter occupied:" -- both counted toward the
+    # numerator regardless of tenure.
+    no_vehicle_vars = [
+        code for code, label in b25044_labels.items()
+        if label.rsplit("!!", 1)[-1] == "No vehicle available"
+    ]
+    if len(no_vehicle_vars) != 2:
+        raise ValueError(f"Expected exactly 2 B25044 'No vehicle available' variables, got {len(no_vehicle_vars)}: {no_vehicle_vars}")
+
     b03002_total = _summed_by_nta(b03002_data, b03002_total_var, tract_to_nta)
     white_alone = _summed_by_nta(b03002_data, white_alone_var, tract_to_nta)
     hispanic = _summed_by_nta(b03002_data, hispanic_var, tract_to_nta)
@@ -152,6 +200,13 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
 
     b01001_total = _summed_by_nta(b01001_data, b01001_total_var, tract_to_nta)
     youth_population = sum(_summed_by_nta(b01001_data, v, tract_to_nta) for v in youth_vars)
+    senior_population = sum(_summed_by_nta(b01001_data, v, tract_to_nta) for v in senior_vars)
+
+    b17001_total = _summed_by_nta(b17001_data, b17001_total_var, tract_to_nta)
+    below_poverty = _summed_by_nta(b17001_data, below_poverty_var, tract_to_nta)
+
+    b25044_total = _summed_by_nta(b25044_data, b25044_total_var, tract_to_nta)
+    no_vehicle = sum(_summed_by_nta(b25044_data, v, tract_to_nta) for v in no_vehicle_vars)
 
     # NOTE: groupby("NTA2020")["estimate"].sum() produces a Series whose
     # *index* is named "NTA2020". Building a DataFrame via a dict literal
@@ -192,6 +247,22 @@ def build_nta_demographics(tract_to_nta: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame({
             "youth_population": youth_population,
             "pct_youth": 100 * youth_population / b01001_total,
+            "senior_population": senior_population,
+            "pct_senior": 100 * senior_population / b01001_total,
+        }).reset_index(),
+        on="NTA2020",
+        how="outer",
+    )
+    result = result.merge(
+        pd.DataFrame({
+            "pct_poverty": 100 * below_poverty / b17001_total,
+        }).reset_index(),
+        on="NTA2020",
+        how="outer",
+    )
+    result = result.merge(
+        pd.DataFrame({
+            "pct_no_vehicle": 100 * no_vehicle / b25044_total,
         }).reset_index(),
         on="NTA2020",
         how="outer",

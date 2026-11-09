@@ -54,13 +54,35 @@ B01001_LABELS = {
     "B01001_004E": "Estimate!!Total:!!Male:!!5 to 9 years",
     "B01001_005E": "Estimate!!Total:!!Male:!!10 to 14 years",
     "B01001_006E": "Estimate!!Total:!!Male:!!15 to 17 years",
-    # A non-youth bracket included deliberately, so the test also catches
-    # an over-broad predicate that accidentally sweeps in adult brackets.
+    # A non-youth, non-senior bracket included deliberately, so the test
+    # also catches an over-broad predicate that accidentally sweeps in
+    # middle-age brackets.
     "B01001_011E": "Estimate!!Total:!!Male:!!25 to 29 years",
+    "B01001_020E": "Estimate!!Total:!!Male:!!65 and 66 years",
+    "B01001_021E": "Estimate!!Total:!!Male:!!67 to 69 years",
+    "B01001_022E": "Estimate!!Total:!!Male:!!70 to 74 years",
+    "B01001_023E": "Estimate!!Total:!!Male:!!75 to 79 years",
+    "B01001_024E": "Estimate!!Total:!!Male:!!80 to 84 years",
+    "B01001_025E": "Estimate!!Total:!!Male:!!85 years and over",
     "B01001_027E": "Estimate!!Total:!!Female:!!Under 5 years",
     "B01001_028E": "Estimate!!Total:!!Female:!!5 to 9 years",
     "B01001_029E": "Estimate!!Total:!!Female:!!10 to 14 years",
     "B01001_030E": "Estimate!!Total:!!Female:!!15 to 17 years",
+    "B01001_044E": "Estimate!!Total:!!Female:!!65 and 66 years",
+    "B01001_045E": "Estimate!!Total:!!Female:!!67 to 69 years",
+    "B01001_046E": "Estimate!!Total:!!Female:!!70 to 74 years",
+    "B01001_047E": "Estimate!!Total:!!Female:!!75 to 79 years",
+    "B01001_048E": "Estimate!!Total:!!Female:!!80 to 84 years",
+    "B01001_049E": "Estimate!!Total:!!Female:!!85 years and over",
+}
+B17001_LABELS = {
+    "B17001_001E": "Estimate!!Total:",
+    "B17001_002E": "Estimate!!Total:!!Income in the past 12 months below poverty level:",
+}
+B25044_LABELS = {
+    "B25044_001E": "Estimate!!Total:",
+    "B25044_003E": "Estimate!!Total:!!Owner occupied:!!No vehicle available",
+    "B25044_010E": "Estimate!!Total:!!Renter occupied:!!No vehicle available",
 }
 
 # The two tracts intentionally have UNEQUAL table totals (1000 vs 3000) for
@@ -100,19 +122,53 @@ B05006_DATA = pd.DataFrame(
 )
 B01001_VARS = [
     "B01001_001E", "B01001_003E", "B01001_004E", "B01001_005E", "B01001_006E",
-    "B01001_011E", "B01001_027E", "B01001_028E", "B01001_029E", "B01001_030E",
+    "B01001_011E",
+    "B01001_020E", "B01001_021E", "B01001_022E", "B01001_023E", "B01001_024E", "B01001_025E",
+    "B01001_027E", "B01001_028E", "B01001_029E", "B01001_030E",
+    "B01001_044E", "B01001_045E", "B01001_046E", "B01001_047E", "B01001_048E", "B01001_049E",
 ]
 B01001_DATA = pd.DataFrame(
     {
         "GEOID": ["36061000100"] * len(B01001_VARS) + ["36061000200"] * len(B01001_VARS),
         "variable": B01001_VARS * 2,
         # Tract 1 (total 1000): 4 male youth brackets 50/40/30/20, one adult
-        # bracket (25-29) 200 (should be ignored), 4 female youth brackets
-        # 45/35/25/15. Youth sum = 260.
-        # Tract 2 (total 3000): male 150/140/130/120, adult 500 (ignored),
-        # female 145/135/125/115. Youth sum = 1060.
-        "estimate": [1000.0, 50.0, 40.0, 30.0, 20.0, 200.0, 45.0, 35.0, 25.0, 15.0,
-                     3000.0, 150.0, 140.0, 130.0, 120.0, 500.0, 145.0, 135.0, 125.0, 115.0],
+        # bracket (25-29) 200 (should be ignored), 6 male senior brackets
+        # 10/8/12/6/4/2 (sum 42), 4 female youth brackets 45/35/25/15, 6
+        # female senior brackets 9/7/11/5/3/1 (sum 36). Youth sum = 260,
+        # senior sum = 78.
+        # Tract 2 (total 3000): male youth 150/140/130/120, adult 500
+        # (ignored), male senior 30/24/36/18/12/6 (sum 126), female youth
+        # 145/135/125/115, female senior 27/21/33/15/9/3 (sum 108). Youth
+        # sum = 1060, senior sum = 234.
+        "estimate": [
+            1000.0, 50.0, 40.0, 30.0, 20.0, 200.0,
+            10.0, 8.0, 12.0, 6.0, 4.0, 2.0,
+            45.0, 35.0, 25.0, 15.0,
+            9.0, 7.0, 11.0, 5.0, 3.0, 1.0,
+            3000.0, 150.0, 140.0, 130.0, 120.0, 500.0,
+            30.0, 24.0, 36.0, 18.0, 12.0, 6.0,
+            145.0, 135.0, 125.0, 115.0,
+            27.0, 21.0, 33.0, 15.0, 9.0, 3.0,
+        ],
+    }
+)
+B17001_DATA = pd.DataFrame(
+    {
+        "GEOID": ["36061000100", "36061000100", "36061000200", "36061000200"],
+        "variable": ["B17001_001E", "B17001_002E"] * 2,
+        # Tract 1: total 900, below poverty 180. Tract 2: total 2800, below
+        # poverty 420. Sum: total 3700, below poverty 600 -> 16.216...%
+        "estimate": [900.0, 180.0, 2800.0, 420.0],
+    }
+)
+B25044_DATA = pd.DataFrame(
+    {
+        "GEOID": ["36061000100"] * 3 + ["36061000200"] * 3,
+        "variable": ["B25044_001E", "B25044_003E", "B25044_010E"] * 2,
+        # Tract 1: total 800, no-vehicle owner 50 + renter 100 = 150.
+        # Tract 2: total 2500, no-vehicle owner 200 + renter 300 = 500.
+        # Sum: total 3300, no-vehicle 650 -> 19.6969...%
+        "estimate": [800.0, 50.0, 100.0, 2500.0, 200.0, 300.0],
     }
 )
 
@@ -121,7 +177,7 @@ def _fake_fetch_group_labels(table_id):
     return {
         "B03002": B03002_LABELS, "B02001": B02001_LABELS,
         "B05002": B05002_LABELS, "B05006": B05006_LABELS,
-        "B01001": B01001_LABELS,
+        "B01001": B01001_LABELS, "B17001": B17001_LABELS, "B25044": B25044_LABELS,
     }[table_id]
 
 
@@ -129,7 +185,7 @@ def _fake_fetch_acs_group(table_id):
     return {
         "B03002": B03002_DATA, "B02001": B02001_DATA,
         "B05002": B05002_DATA, "B05006": B05006_DATA,
-        "B01001": B01001_DATA,
+        "B01001": B01001_DATA, "B17001": B17001_DATA, "B25044": B25044_DATA,
     }[table_id]
 
 
@@ -173,6 +229,16 @@ def test_build_nta_demographics_sums_before_dividing():
     # years" adult bracket (200+500=700) is deliberately excluded)
     assert row["youth_population"] == pytest.approx(1320)
     assert row["pct_youth"] == pytest.approx(33.0)
+    # Senior (65+, both sexes) summed: tract1 = 42+36 = 78, tract2 = 126+108 = 234
+    # senior_population = 78+234 = 312; total(B01001) = 4000 -> 7.8
+    assert row["senior_population"] == pytest.approx(312)
+    assert row["pct_senior"] == pytest.approx(7.8)
+    # Poverty: below summed=180+420=600, total(B17001)=900+2800=3700 -> 16.216...%
+    # (average would give (20+15)/2 = 17.5 -- different)
+    assert row["pct_poverty"] == pytest.approx(100 * 600 / 3700)
+    # No vehicle: summed=150+500=650, total(B25044)=800+2500=3300 -> 19.697...%
+    # (average would give (18.75+20)/2 = 19.375 -- different)
+    assert row["pct_no_vehicle"] == pytest.approx(100 * 650 / 3300)
     # Detailed national origin: Mexico summed=60+90=150, total(B05006)=250+400=650 -> ~23.077
     assert row["pct_foreign_born_mexico"] == pytest.approx(100 * 150 / 650)
 

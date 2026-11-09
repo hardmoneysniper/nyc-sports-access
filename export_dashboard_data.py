@@ -4,8 +4,9 @@ pipeline output, does not run r5py or touch the underlying pipeline.
 
 Writes to frontend/public/data/:
 
-- demographics.geojson: NTA boundaries + the 6 selectable pct_* demographic
-  columns, from data/processed/nta_output.geojson.
+- demographics.geojson: NTA boundaries + the 6 selectable demographic
+  columns (DEMOGRAPHIC_COLUMNS -- mostly pct_* percentages, plus one dollar
+  figure, median_household_income), from data/processed/nta_output.geojson.
 - travel_time.geojson: NTA boundaries + the 21 display-level
   travel_time_{group} columns (config.SPORT_TYPE_GROUPS -- e.g. youth
   baseball's 3 raw variants collapse into one), derived from the 24 raw
@@ -38,8 +39,6 @@ into one file would mean shipping a meaningful fraction of that 573MB to
 the browser on every page load; per-NTA files mean a click on one NTA only
 ever fetches that NTA's data.
 """
-import json
-
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -53,9 +52,14 @@ load_dotenv()
 
 OUTPUT_DIR = config.DATA_DIR.parent / "frontend" / "public" / "data"
 
+# Narrowed down from the original 6 race/ethnicity + immigrant categories
+# to just immigrant/foreign-born plus 5 new ones (poverty, income, vehicle
+# access, youth, seniors), ranked in this order -- kept the race/ethnicity
+# breakdown by column, not in the selectable set. Per project owner
+# instruction, 2026-11-09.
 DEMOGRAPHIC_COLUMNS = [
-    "pct_non_white", "pct_hispanic_or_latino", "pct_black_or_african_american",
-    "pct_asian", "pct_two_or_more_races", "pct_immigrant",
+    "pct_immigrant", "pct_poverty", "median_household_income",
+    "pct_no_vehicle", "pct_youth", "pct_senior",
 ]
 
 
@@ -210,58 +214,6 @@ def export_burden_index():
     print(f"Wrote {output_path} ({len(output)} NTAs, {len(burden_columns)} sport types)")
 
 
-def export_access_gap():
-    """Export signed, unweighted travel-time residuals for reuse in analyses."""
-    merged = _load_merged_with_travel_time()
-    residual_by_group = _compute_residuals(merged)
-    for group, residual in residual_by_group.items():
-        merged[f"access_gap_{group}"] = residual
-
-    gap_columns = [f"access_gap_{g}" for g in config.SPORT_TYPE_GROUPS]
-    output = merged[["NTA2020", "NTAName", "geometry"] + gap_columns]
-    output_path = OUTPUT_DIR / "access_gap.geojson"
-    output.to_file(output_path, driver="GeoJSON")
-    print(f"Wrote {output_path} ({len(output)} NTAs, {len(gap_columns)} sport types)")
-
-
-def export_burden_index_demographic_regressions(metric="burden_index"):
-    """Fit the selected accessibility metric against demographic percentage.
-
-    Uses the same positive-only filter as the Explore scatterplot.
-    Pairs with fewer than ten observations are omitted.
-    """
-    merged = _load_merged_with_travel_time()
-    demo = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020"] + DEMOGRAPHIC_COLUMNS]
-    merged = merged.merge(demo, on="NTA2020", how="left")
-    burden_by_group = (
-        _compute_burden_indices(merged)
-        if metric == "burden_index"
-        else {group: merged[f"travel_time_{group}"] for group in config.SPORT_TYPE_GROUPS}
-    )
-
-    regressions: dict[str, dict[str, dict[str, float]]] = {}
-    for group, burden in burden_by_group.items():
-        regressions[group] = {}
-        positive = burden > 0
-        for demo_col in DEMOGRAPHIC_COLUMNS:
-            valid = positive & burden.notna() & merged[demo_col].notna()
-            if valid.sum() < 10:
-                continue
-            slope, intercept, r, *_ = stats.linregress(merged.loc[valid, demo_col], burden[valid])
-            regressions[group][demo_col] = {
-                "slope": slope,
-                "intercept": intercept,
-                "r": r,
-                "n": int(valid.sum()),
-            }
-
-    output_path = OUTPUT_DIR / f"{metric}_demographic_regressions.json"
-    with open(output_path, "w") as f:
-        json.dump(regressions, f)
-    pair_count = sum(len(v) for v in regressions.values())
-    print(f"Wrote {output_path} ({pair_count} sport x demographic regressions)")
-
-
 def export_nta_boundaries():
     nta = gpd.read_file(config.PROCESSED_DIR / "nta_output.geojson")[["NTA2020", "geometry"]]
     output_path = OUTPUT_DIR / "nta_boundaries.geojson"
@@ -317,9 +269,6 @@ def main():
     export_demographics()
     export_travel_time()
     export_burden_index()
-    export_access_gap()
-    export_burden_index_demographic_regressions()
-    export_burden_index_demographic_regressions("travel_time")
     export_nta_boundaries()
     export_tracts_by_nta()
     export_routes_by_nta()
