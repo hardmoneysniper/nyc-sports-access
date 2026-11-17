@@ -52,6 +52,12 @@ export function binLabel(binEdges: number[], index: number, suffix = ""): string
 // instruction, 2026-09-29 -- reusing it directly (not a copy) so the two
 // never drift apart.
 export const BURDEN_BIN_COLORS = BIN_COLORS;
+// Fixed score thresholds shared by every sport; the final band is open-ended.
+export const BURDEN_SCORE_BIN_EDGES = [0, 10, 25, 50, 100, Infinity];
+export const BURDEN_SCORE_BAND_LABELS = ["0", "10", "25", "50", "100+"];
+// Minutes, using the same thresholds for every sport.
+export const TRAVEL_TIME_BIN_EDGES = [0, 15, 30, 45, 60, Infinity];
+export const TRAVEL_TIME_BAND_LABELS = ["0", "15", "30", "45", "60+"];
 // "Nth" (the band's upper percentile cutoff), not a "low-high" range --
 // per project owner instruction, 2026-09-29. The word "percentile" itself
 // now lives once in the legend's title ("(Percentile)") instead of on

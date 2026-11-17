@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import NtaInfoPanel from "./NtaInfoPanel";
 import type { InvestmentPriority } from "@/lib/investmentPriorities";
 import { useEffect, useRef, useState } from "react";
 import {
   useSelection,
-  ACCESS_METRICS,
   DEMOGRAPHIC_CATEGORIES,
   SPORT_TYPES,
   type DemographicCategoryValue,
@@ -248,6 +248,7 @@ export default function MapMenuPanel({
   sportType,
   onSportTypeChange,
   highlightPriorities,
+  selectedNta,
   priorityRows,
   onHighlightPrioritiesChange,
   demographicCategory,
@@ -255,6 +256,7 @@ export default function MapMenuPanel({
   view,
   onViewChange,
 }: {
+  selectedNta: string | null;
   priorityRows: InvestmentPriority[] | null;
   highlightPriorities: boolean;
   onHighlightPrioritiesChange: (enabled: boolean) => void;
@@ -295,35 +297,22 @@ export default function MapMenuPanel({
     >
       <div style={{ width: PANEL_WIDTH, height: "100%", display: "flex", flexDirection: "column" }}>
           <AccordionSection
-            title="Public Sport Facilities Accessibility"
+            title="Access Burden Score"
             active={activeSection === "recreation"}
             onActivate={() => setActiveSection("recreation")}
           >
             <DropdownField
               value={sportType}
-              onChange={onSportTypeChange}
+              onChange={(value) => { setAccessMetric("burden_index"); onSportTypeChange(value); }}
               options={SPORT_TYPES}
               placeholder="Select sports facility"
             />
-            {sportType !== null && (
-            <div role="group" aria-label="Accessibility metric" style={{ display: "flex", gap: 8, margin: "20px 28px 0" }}>
-              {ACCESS_METRICS.map((metric) => {
-                const selected = accessMetric === metric.value;
-                return (
-                  <button
-                    key={metric.value}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setAccessMetric(metric.value)}
-                    style={{ flex: 1, minWidth: 0, minHeight: 64, padding: "10px 8px", border: "1px solid #555", borderRadius: 0, background: selected ? "#363636" : "#000", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 600, lineHeight: 1.4, cursor: "pointer", transition: "background 150ms ease, color 150ms ease" }}
-                  >
-                    {metric.label}
-                  </button>
-                );
-              })}
-            </div>
+            {view === "map" && selectedNta && (
+              <div style={{ margin: "24px 28px 0" }}>
+                <NtaInfoPanel key={`${selectedNta}-${sportType}`} ntaCode={selectedNta} sport={sportType} />
+              </div>
             )}
-            {view === "map" && sportType !== null && accessMetric !== null && (
+            {view === "map" && !selectedNta && sportType !== null && accessMetric !== null && (
             <div style={{ margin: "24px 28px 0", opacity: sportType ? 1 : 0.45 }}>
               <button
                 type="button"

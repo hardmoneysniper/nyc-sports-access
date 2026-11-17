@@ -14,8 +14,7 @@ import {
 
 // Compare the map's population-weighted burden index (or average travel
 // time) with a demographic category. Keeps the existing positive-only
-// neighborhood filter. No fitted trend line -- removed per project owner
-// instruction, 2026-11-09.
+// neighborhood filter. An optional fitted line follows the borough filter.
 
 type BoroughCode = "MN" | "BX" | "BK" | "QN" | "SI";
 
@@ -46,7 +45,20 @@ function boroughOf(ntaCode: string): BoroughCode | null {
   return BOROUGHS.some((b) => b.value === prefix) ? (prefix as BoroughCode) : null;
 }
 
-type NtaPoint = { ntaCode: string; borough: BoroughCode | null; burdenIndex: number; demographicValue: number };
+type NtaPoint = { ntaCode: string; name: string; borough: BoroughCode | null; burdenIndex: number; demographicValue: number };
+
+function fitTrendLine(points: NtaPoint[]) {
+  const valid = points.filter((p) => Number.isFinite(p.demographicValue) && Number.isFinite(p.burdenIndex));
+  if (valid.length < 2) return null;
+  const meanX = valid.reduce((sum, p) => sum + p.demographicValue, 0) / valid.length;
+  const meanY = valid.reduce((sum, p) => sum + p.burdenIndex, 0) / valid.length;
+  const variance = valid.reduce((sum, p) => sum + (p.demographicValue - meanX) ** 2, 0);
+  if (variance === 0) return null;
+  const slope = valid.reduce((sum, p) => sum + (p.demographicValue - meanX) * (p.burdenIndex - meanY), 0) / variance;
+  const minX = Math.min(...valid.map((p) => p.demographicValue));
+  const maxX = Math.max(...valid.map((p) => p.demographicValue));
+  return { minX, maxX, startY: meanY + slope * (minX - meanX), endY: meanY + slope * (maxX - meanX) };
+}
 
 function useScatterData(sportType: SportTypeValue, demographicCategory: DemographicCategoryValue) {
   const { accessMetric } = useSelection();
@@ -72,7 +84,7 @@ function useScatterData(sportType: SportTypeValue, demographicCategory: Demograp
         const burdenValue = burdenByNta.get(ntaCode);
         const demoValue = f.properties?.[demographicCategory] as number | null | undefined;
         if (typeof burdenValue === "number" && typeof demoValue === "number") {
-          parsed.push({ ntaCode, borough: boroughOf(ntaCode), burdenIndex: burdenValue, demographicValue: demoValue });
+          parsed.push({ ntaCode, name: (f.properties?.NTAName as string) ?? ntaCode, borough: boroughOf(ntaCode), burdenIndex: burdenValue, demographicValue: demoValue });
         }
       }
       setPoints(parsed);
@@ -120,6 +132,7 @@ function Scatter({
   yLabel,
   unit,
   selectedBorough,
+  showTrendLine,
   selectedNta,
   onSelectNta,
 }: {
@@ -128,6 +141,7 @@ function Scatter({
   yLabel: string;
   unit: DemographicUnit;
   selectedBorough: BoroughCode | null;
+  showTrendLine: boolean;
   selectedNta: string | null;
   onSelectNta: (id: string) => void;
 }) {
@@ -147,11 +161,12 @@ function Scatter({
   const xTicks = xAxis.ticks;
   const yTicks = yAxis.ticks;
   const visiblePoints = selectedBorough === null ? points : points.filter((p) => p.borough === selectedBorough);
+  const trendLine = showTrendLine ? fitTrendLine(visiblePoints) : null;
   const selectedPoint = visiblePoints.find((p) => p.ntaCode === selectedNta);
   const orderedPoints = selectedPoint ? [...visiblePoints.filter((p) => p !== selectedPoint), selectedPoint] : visiblePoints;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%", height: "auto", background: "#000" }}>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMinYMin meet" style={{ display: "block", width: "100%", height: "100%", background: "#000" }}>
       <line x1={PAD_LEFT} y1={PAD_TOP} x2={PAD_LEFT} y2={PAD_TOP + plotH} stroke="#fff" strokeOpacity={0.4} />
       <line x1={PAD_LEFT} y1={PAD_TOP + plotH} x2={PAD_LEFT + plotW} y2={PAD_TOP + plotH} stroke="#fff" strokeOpacity={0.4} />
       {xTicks.filter((t) => !selectedPoint || Math.abs(sx(t) - sx(selectedPoint.demographicValue)) > 24).map((t) => (
@@ -178,6 +193,18 @@ function Scatter({
         {yLabel}
       </text>
 
+      {trendLine && (
+        <svg x={PAD_LEFT} y={PAD_TOP} width={plotW} height={plotH} overflow="hidden" pointerEvents="none">
+          <line
+            x1={sx(trendLine.minX) - PAD_LEFT} y1={sy(trendLine.startY) - PAD_TOP}
+            x2={sx(trendLine.maxX) - PAD_LEFT} y2={sy(trendLine.endY) - PAD_TOP}
+            stroke={selectedBorough ? BOROUGH_COLORS[selectedBorough] : "#fff"}
+            strokeWidth={2} strokeDasharray="6 4"
+          >
+            <title>Linear trend for {selectedBorough ? BOROUGHS.find((b) => b.value === selectedBorough)?.label : "all boroughs"}</title>
+          </line>
+        </svg>
+      )}
       {selectedPoint && (
         <g pointerEvents="none">
           <path
@@ -214,7 +241,24 @@ function Scatter({
             style={{ cursor: selectedBorough ? "pointer" : "default" }}
           >
             <circle cx={sx(p.demographicValue)} cy={sy(p.burdenIndex)} r={8} fill="transparent" />
-            <circle cx={sx(p.demographicValue)} cy={sy(p.burdenIndex)} r={isSelected ? 4 : 3} fill={fill} fillOpacity={isDimmed ? 0.7 : 1} />
+            <circle cx={sx(p.demographicValue)} cy={sy(p.burdenIndex)} r={isSelected ? 3 : 2} fill={fill} fillOpacity={isDimmed ? 0.7 : 1} />
+            {isSelected && (
+              <text
+                x={sx(p.demographicValue) + 8}
+                y={sy(p.burdenIndex) - 8}
+                fill={fill}
+                fontSize={11}
+                fontWeight={600}
+                textAnchor="start"
+                pointerEvents="none"
+                stroke="#000"
+                strokeWidth={3}
+                paintOrder="stroke"
+                strokeLinejoin="round"
+              >
+                {p.name}
+              </text>
+            )}
           </g>
         );
       })}
@@ -234,6 +278,7 @@ export default function BurdenDemographicScatter({
   const points = useScatterData(sportType, demographicCategory);
   const [selectedNta, setSelectedNta] = useState<string | null>(null);
   const [selectedBorough, setSelectedBorough] = useState<BoroughCode | null>(null);
+  const [showTrendLine, setShowTrendLine] = useState(false);
 
   const sportLabel = SPORT_TYPES.find((s) => s.value === sportType)?.label ?? sportType;
   const demographicInfo = DEMOGRAPHIC_CATEGORIES.find((c) => c.value === demographicCategory);
@@ -249,45 +294,20 @@ export default function BurdenDemographicScatter({
   }
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", scrollbarGutter: "stable", padding: "72px 80px 120px", color: "#fff" }}>
-      <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
-        {metricLabel} vs. {demographicLabel} — {sportLabel}
+    <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", padding: "64px clamp(24px, 4vw, 80px) 24px", color: "#fff" }}>
+      <h2 style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2, margin: 0 }}>
+        {sportLabel}
       </h2>
+      <p style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4, marginTop: 8 }}>
+        {metricLabel} vs. {demographicLabel}
+      </p>
       <p style={{ fontSize: 14, color: "#ccc", marginTop: 8 }}>
-        {accessMetric === "travel_time" ? "Each point is one NTA’s population-weighted average travel time to the nearest facility, in minutes." : "Each point is one NTA with a positive access burden score (excess travel time weighted by population in units of 10,000 residents)."} {points.length} NTAs shown.
+        {accessMetric === "travel_time" ? "Each point is a NTA’s population-weighted average travel time to the nearest facility, in minutes." : "Each point is a NTA with a positive access burden score (excess travel time weighted by population in units of 10,000 residents)."} {selectedBorough === null ? points.length : points.filter((point) => point.borough === selectedBorough).length} NTAs shown.
       </p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 20, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 14, color: "#aaa" }}>Borough:</span>
-          {BOROUGHS.map((b) => {
-            const active = selectedBorough === b.value;
-            return (
-              <button
-                key={b.value}
-                onClick={() => { setSelectedNta(null); setSelectedBorough((prev) => (prev === b.value ? null : b.value)); }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  color: active ? "#fff" : "#aaa",
-                  fontWeight: active ? 700 : 400,
-                }}
-              >
-                <span style={{ width: 10, height: 10, borderRadius: "50%", background: BOROUGH_COLORS[b.value], display: "inline-block" }} />
-                {b.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
-      <div style={{ marginTop: 24, maxWidth: 820 }}>
+      <div style={{ display: "flex", gap: 24, marginTop: 16, flex: 1, minHeight: 0, width: "100%", overflow: "hidden" }}>
+        <div style={{ flex: 1, minWidth: 0, height: "100%" }}>
         <Scatter
           key={`${sportType}-${demographicCategory}-${accessMetric}`}
           points={points}
@@ -295,9 +315,55 @@ export default function BurdenDemographicScatter({
           yLabel={accessMetric === "travel_time" ? "Average Travel Time (minutes)" : metricLabel}
           unit={demographicUnit}
           selectedBorough={selectedBorough}
+          showTrendLine={showTrendLine}
           selectedNta={selectedNta}
           onSelectNta={(id) => setSelectedNta((previous) => previous === id ? null : id)}
         />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 12, width: 160, flexShrink: 0, paddingTop: 24 }}>
+        <button
+          type="button"
+          className="borough-select-button"
+          aria-pressed={showTrendLine}
+          onClick={() => setShowTrendLine((previous) => !previous)}
+          style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, width: "100%", justifyContent: "space-between", flexShrink: 0, maxWidth: "100%", minHeight: 44, padding: "10px 14px", border: `1px solid ${showTrendLine ? "#fff" : "#444"}`, borderRadius: 0, background: showTrendLine ? "#222" : "transparent", color: "#fff", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>Show trend line</span>
+          <svg aria-hidden="true" width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" style={{ flexShrink: 0, transform: showTrendLine ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 220ms ease" }}>
+            <path d="M5 12h14M12 5v14" />
+          </svg>
+        </button>
+          {BOROUGHS.map((b) => {
+            const active = selectedBorough === b.value;
+            return (
+              <button
+                key={b.value}
+                type="button"
+                className="borough-select-button"
+                aria-pressed={active}
+                onClick={() => { setSelectedNta(null); setSelectedBorough((prev) => (prev === b.value ? null : b.value)); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minHeight: 36,
+                  width: 148,
+                  background: active ? `${BOROUGH_COLORS[b.value]}26` : "transparent",
+                  border: `1px solid ${active ? BOROUGH_COLORS[b.value] : "#444"}`,
+                  borderRadius: 0,
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: active ? "#fff" : "#aaa",
+                  fontWeight: 600,
+                }}
+              >
+                <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: "50%", background: BOROUGH_COLORS[b.value], display: "inline-block" }} />
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

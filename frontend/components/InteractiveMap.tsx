@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/mapboxConfig";
 import { featureCollectionBounds, geometryBounds } from "@/lib/geoBounds";
 import { rankInvestmentPriorities } from "@/lib/investmentPriorities";
+import NtaRouteDetail from "@/components/explore/NtaRouteDetail";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -59,6 +60,8 @@ type NtaProperties = { NTA2020: string; NTAName: string; _fillColor: string; _no
 
 type Props = {
   slot: SlotId;
+  selectedNta?: string | null;
+  detailSport?: string | null;
   geojsonUrl: string;
   // Fetched purely to compute the initial fitBounds/minZoom from, instead
   // of geojsonUrl's own data -- demographics.geojson and burden_index.geojson
@@ -134,6 +137,8 @@ function colorizeGeojson(
 function fillOpacityExpression(hasData: boolean): mapboxgl.Expression {
   return [
     "case",
+    ["boolean", ["feature-state", "detail"], false],
+    0.12,
     ["boolean", ["feature-state", "selected"], false],
     SELECTED_FILL_OPACITY,
     ["boolean", ["feature-state", "dimmed"], false],
@@ -154,6 +159,8 @@ function fillOpacityExpression(hasData: boolean): mapboxgl.Expression {
 // instances at once.
 export default function InteractiveMap({
   slot,
+  selectedNta,
+  detailSport,
   geojsonUrl,
   boundsUrl,
   valueProperty,
@@ -166,6 +173,7 @@ export default function InteractiveMap({
   baseOnly,
   highlightPriorities = false,
 }: Props) {
+  const [detailMap, setDetailMap] = useState<MapboxMap | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const rawGeojsonRef = useRef<GeoJSON.FeatureCollection | null>(null);
@@ -199,6 +207,10 @@ export default function InteractiveMap({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    // These flags belong to the map instance, not the React component.
+    // Effect restarts (including live edits) retain refs but create a new map.
+    firstFitDoneRef.current = false;
+    layersReadyRef.current = false;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: MAPBOX_STYLE,
@@ -294,6 +306,7 @@ export default function InteractiveMap({
         paint: { "line-color": "#f5c65d", "line-width": 2.5 },
       });
       layersReadyRef.current = true;
+      setDetailMap(map);
 
       if (!firstFitDoneRef.current) {
         const bounds = featureCollectionBounds(boundsGeojsonRef.current ?? colored);
@@ -334,6 +347,8 @@ export default function InteractiveMap({
       });
 
       map.on("click", NTA_FILL_LAYER_ID, (e) => {
+        // Tract clicks belong to the detailed view, not the NTA zoom toggle.
+        if (map.getLayer("detail-tract-hit") && map.queryRenderedFeatures(e.point, { layers: ["detail-tract-hit"] }).length) return;
         const { valueProperty: curVp, binEdges: curBe } = coloringRef.current;
         if (!curVp || !curBe) return;
         const feature = e.features?.[0];
@@ -404,5 +419,10 @@ export default function InteractiveMap({
     map.setPaintProperty(NTA_FILL_LAYER_ID, "fill-opacity", fillOpacityExpression(!!(valueProperty && binEdges)));
   }, [valueProperty, binEdges, colorMode, highlightPriorities]);
 
-  return <div ref={containerRef} style={{ height: "100%", width: "100%" }} />;
+  return <>
+    <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+    {detailMap && selectedNta && detailSport && !baseOnly && (
+      <NtaRouteDetail key={`${selectedNta}-${detailSport}`} map={detailMap} ntaCode={selectedNta} sport={detailSport} />
+    )}
+  </>;
 }

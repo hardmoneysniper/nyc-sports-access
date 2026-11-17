@@ -88,3 +88,12 @@ a {
 .scatter-point:focus:not(:focus-visible) {
   outline: none;
 }
+
+.borough-select-button:hover {
+  filter: brightness(1.25);
+}
+
+.borough-select-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}

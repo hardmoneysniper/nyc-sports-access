@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { useSelection, DEMOGRAPHIC_CATEGORIES, SPORT_TYPES, formatDemographicValue } from "@/lib/selectionContext";
-import { BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_BAND_LABELS, positiveQuantileBinEdges, quantileBinEdges } from "@/lib/colorScale";
+import { BIN_COLORS, BURDEN_BIN_COLORS, BURDEN_SCORE_BIN_EDGES, BURDEN_SCORE_BAND_LABELS, TRAVEL_TIME_BIN_EDGES, TRAVEL_TIME_BAND_LABELS, quantileBinEdges } from "@/lib/colorScale";
 import { NTA_SOURCE_ID, MAPBOX_MAX_ZOOM } from "@/lib/mapboxConfig";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
 import { featureCollectionBounds, zoomToFitBounds } from "@/lib/geoBounds";
@@ -119,7 +119,6 @@ export default function ExplorePage() {
   const [menuOpen, setMenuOpen] = useState(true);
   const [view, setView] = useState<"map" | "charts">("map");
   const [priorities, setPriorities] = useState<{ property: string; rows: InvestmentPriority[] } | null>(null);
-  const [burdenBinEdges, setBurdenBinEdges] = useState<number[] | null>(null);
   const [demographicBinEdges, setDemographicBinEdges] = useState<number[] | null>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
@@ -129,7 +128,10 @@ export default function ExplorePage() {
   // fit, which could differ between the two -- see project owner report,
   // 2026-09-29, "the scale they shrink to is not universal").
   const preClickViewRef = useRef<MapView | null>(null);
+  const [detailNta, setDetailNta] = useState<string | null>(null);
+  const [detailNtaName, setDetailNtaName] = useState("");
   const selectedIdRef = useRef<string | null>(null);
+  const selectedBoundsRef = useRef<ClickInfo["bounds"] | null>(null);
   const selectedSlotRef = useRef<SlotId | null>(null);
   const selectedInfoRef = useRef<{ lines: string[]; x: number; y: number } | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
@@ -214,6 +216,9 @@ export default function ExplorePage() {
         map.setFeatureState({ source: NTA_SOURCE_ID, id: ntaCodeToFeatureId(code) }, { dimmed: true });
       }
       map.setFeatureState({ source: NTA_SOURCE_ID, id: ntaCodeToFeatureId(selectedIdRef.current) }, { selected: true });
+      if (selectedBoundsRef.current) {
+        map.fitBounds(selectedBoundsRef.current, { padding: 40, duration: 0, maxZoom: MAPBOX_MAX_ZOOM });
+      }
     }
     setMapReadyVersion((v) => v + 1);
   }, []);
@@ -291,6 +296,24 @@ export default function ExplorePage() {
     [applyFeatureState, demographicCategory, sportType, accessMetric, canShowStats]
   );
 
+  const returnToCitywide = useCallback(() => {
+    if (selectedIdRef.current) applyFeatureState(selectedIdRef.current, "selected", false);
+    if (hoveredIdRef.current) applyFeatureState(hoveredIdRef.current, "hover", false);
+    setDimming(false);
+    selectedIdRef.current = null;
+    selectedBoundsRef.current = null;
+    selectedSlotRef.current = null;
+    selectedInfoRef.current = null;
+    hoveredIdRef.current = null;
+    setDetailNta(null);
+    setTooltip(null);
+    for (const map of Object.values(mapRefs.current)) {
+      if (!map) continue;
+      if (demoBounds) map.fitBounds(demoBounds, { padding: 10, duration: 1200, maxZoom: MAPBOX_MAX_ZOOM });
+      else if (preClickViewRef.current) map.easeTo({ ...preClickViewRef.current, duration: 1200 });
+    }
+  }, [applyFeatureState, setDimming, demoBounds]);
+
   const handleNtaClick = useCallback(
     (slot: SlotId, info: ClickInfo) => {
       if (!canShowStats(slot, info.ntaCode)) return;
@@ -299,39 +322,14 @@ export default function ExplorePage() {
       const otherSlot: SlotId = slot === "demographics" ? "travel-time" : "demographics";
       const otherMap = mapRefs.current[otherSlot];
 
-      // Only the ALREADY-focused NTA's own click can do anything while a
-      // district is focused -- clicking any OTHER NTA is ignored outright,
-      // rather than the seemingly more natural "just re-target focus to
-      // whichever NTA was clicked next" (which is what falling through to
-      // the fitBounds-to-new-bounds logic below would do regardless of
-      // whether something was already selected). Narrowing the focused
-      // state's interaction surface down to a single click target this
-      // way is a deliberate isolation step for a separate edge-case bug
-      // under investigation: it rules "clicking a second NTA while one is
-      // already focused" in or out as a contributing cause. Per project
-      // owner report, 2026-10-16.
-      if (selectedIdRef.current && selectedIdRef.current !== info.ntaCode) return;
+      // Only the explicit return button exits detail mode. Map clicks are
+      // reserved for selecting census tracts while an NTA is focused.
+      if (selectedIdRef.current) return;
 
-      if (selectedIdRef.current === info.ntaCode) {
-        // Toggle off -- shrink both maps back to the exact view they
-        // shared right before the click, fading every NTA back to its
-        // normal, uniform opacity.
-        applyFeatureState(info.ntaCode, "selected", false);
-        setDimming(false);
-        selectedIdRef.current = null;
-        selectedSlotRef.current = null;
-        selectedInfoRef.current = null;
-        const preClick = preClickViewRef.current;
-        if (preClick) {
-          map.easeTo({ center: preClick.center, zoom: preClick.zoom, duration: 1200 });
-          otherMap?.easeTo({ center: preClick.center, zoom: preClick.zoom, duration: 1200 });
-        }
-        setTooltip(null);
-        return;
-      }
-
-      if (selectedIdRef.current) applyFeatureState(selectedIdRef.current, "selected", false);
       selectedIdRef.current = info.ntaCode;
+      selectedBoundsRef.current = info.bounds;
+      setDetailNta(info.ntaCode);
+      setDetailNtaName(String(info.properties.NTAName ?? info.ntaCode));
       selectedSlotRef.current = slot;
       const lines = formatTooltipLines(slot, info.properties, demographicCategory, sportType, accessMetric);
       selectedInfoRef.current = { lines, x: info.x, y: info.y };
@@ -453,20 +451,13 @@ export default function ExplorePage() {
   }, [referenceMinZoom, mapReadyVersion]);
 
   useEffect(() => {
-    // No setState here when valueProperty is null -- the call sites below
-    // already gate on `sportType` being set before reading burdenBinEdges,
-    // so a stale value just sits unused rather than needing a reset.
+    // Priority rankings still follow the selected metric and sport.
     if (!valueProperty) return;
     let cancelled = false;
     fetch(metricUrl)
       .then((res) => res.json())
       .then((data: GeoJSON.FeatureCollection) => {
         if (cancelled) return;
-        const values = data.features.map((f) => f.properties?.[valueProperty] as number | null | undefined);
-        // Equal-COUNT (quantile/percentile) bins for every sport, including
-        // soccer -- the equal-WIDTH experiment was reverted. Per project
-        // owner instruction, 2026-09-29.
-        setBurdenBinEdges(positiveQuantileBinEdges(values));
         setPriorities({ property: valueProperty, rows: rankInvestmentPriorities(data, valueProperty) });
       });
     return () => {
@@ -512,6 +503,7 @@ export default function ExplorePage() {
           if (enabled) setView("map");
         }}
         onSportTypeChange={setSportType}
+        selectedNta={detailNta}
         demographicCategory={demographicCategory}
         onDemographicCategoryChange={setDemographicCategory}
         view={view}
@@ -534,11 +526,13 @@ export default function ExplorePage() {
           <div style={{ flex: 1, height: "100%", position: "relative" }}>
             <InteractiveMap
               slot="travel-time"
+              selectedNta={detailNta}
+              detailSport={sportType}
               key={accessMetric ?? "none"}
               geojsonUrl={metricUrl}
               boundsUrl={withBasePath("/data/demographics.geojson")}
               valueProperty={valueProperty}
-              binEdges={valueProperty ? burdenBinEdges : null}
+              binEdges={valueProperty ? (accessMetric === "burden_index" ? BURDEN_SCORE_BIN_EDGES : TRAVEL_TIME_BIN_EDGES) : null}
               colorMode="positiveQuantile"
               baseOnly={!valueProperty}
               highlightPriorities={showPriorities && !!sportType}
@@ -547,10 +541,11 @@ export default function ExplorePage() {
               onHover={handleHover}
               onNtaClick={handleNtaClick}
             />
-            {sportType && accessMetric && burdenBinEdges && (
-              <MapLegend title={`${sportLabel} ${accessMetric === "travel_time" ? "Average Travel Time" : "Access Burden Score"} (Percentile)`} colors={BURDEN_BIN_COLORS} labels={BURDEN_BAND_LABELS} />
+            {detailNta ? (<button type="button" onClick={returnToCitywide} style={{ position: "absolute", bottom: 32, right: 10, zIndex: 1000, padding: "12px 16px", border: "1px solid #555", background: "#000", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Return to Citywide Data</button>) : sportType && accessMetric && (
+              <MapLegend title={`${sportLabel} ${accessMetric === "travel_time" ? "Average Travel Time (minutes)" : "Access Burden Score"}`} colors={BURDEN_BIN_COLORS} labels={accessMetric === "burden_index" ? BURDEN_SCORE_BAND_LABELS : TRAVEL_TIME_BAND_LABELS} />
             )}
-            {tooltip?.slot === "travel-time" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
+            {detailNta && <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, padding: "12px 16px", border: "1px solid #555", background: "#000", color: "#fff", fontSize: 18, fontWeight: 700 }}>{detailNtaName || detailNta} - {({ MN: "Manhattan", BX: "Bronx", BK: "Brooklyn", QN: "Queens", SI: "Staten Island" } as Record<string, string>)[detailNta.slice(0, 2)] ?? ""}</div>}
+            {!detailNta && tooltip?.slot === "travel-time" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
           </div>
           {demographicCategory && (
             <div style={{ flex: 1, height: "100%", position: "relative" }}>
@@ -564,14 +559,14 @@ export default function ExplorePage() {
                 onHover={handleHover}
                 onNtaClick={handleNtaClick}
               />
-              {demographicBinEdges && (
+              {detailNta ? (<button type="button" onClick={returnToCitywide} style={{ position: "absolute", bottom: 32, right: 10, zIndex: 1000, padding: "12px 16px", border: "1px solid #555", background: "#000", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Return to Citywide Data</button>) : demographicBinEdges && (
                 <MapLegend
                   title={demographicLabel}
                   colors={BIN_COLORS}
                   labels={demographicBinEdges.slice(1).map((edge) => formatDemographicValue(edge, demographicUnit))}
                 />
               )}
-              {tooltip?.slot === "demographics" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
+              {!detailNta && tooltip?.slot === "demographics" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
             </div>
           )}
         </div>

@@ -91,7 +91,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
   // state. Per project owner instruction, 2026-10-08 ("the default...
   // should be nothing is selected").
   const [demographicCategory, setDemographicCategory] = useState<DemographicCategory | null>(null);
-  const [accessMetric, setAccessMetric] = useState<AccessMetric | null>(null);
+  const [accessMetric, setAccessMetric] = useState<AccessMetric | null>("burden_index");
   const [sportType, setSportType] = useState<SportType | null>(null);
 
   return (
