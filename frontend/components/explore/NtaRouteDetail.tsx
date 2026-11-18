@@ -32,12 +32,6 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
     const enterTract = () => { map.getCanvas().style.cursor = "pointer"; };
     const leaveTract = () => { map.getCanvas().style.cursor = ""; };
     async function load() {
-      // Only these detailed exports are bundled currently. Keep unsupported
-      // selections explicit instead of substituting straight-line routes.
-      if (ntaCode !== "QN0401") {
-        setStatus("Census-tract boundaries and routes are not available for this neighborhood yet.");
-        return;
-      }
       try {
         const tracts = await readData(`tracts/${ntaCode}.geojson`, controller.signal);
         if (controller.signal.aborted) return;
