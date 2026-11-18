@@ -19,6 +19,8 @@ async function readData(path: string, signal: AbortSignal): Promise<GeoJSON.Feat
 }
 
 export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap; ntaCode: string; sport: string }) {
+  const [totalMinutes, setTotalMinutes] = useState(0);
+  const [activeModes, setActiveModes] = useState<string[]>([]);
   const [status, setStatus] = useState("Loading census-tract details…");
 
   useEffect(() => {
@@ -66,7 +68,7 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
         map.addSource(SOURCE_IDS[2], { type: "geojson", data: empty });
         map.addLayer({ id: TRACT_HIT_LAYER, type: "fill", source: SOURCE_IDS[0], paint: { "fill-color": "#ffffff", "fill-opacity": 0.01 } });
         map.addLayer({ id: "detail-route-halo", type: "line", source: SOURCE_IDS[1], paint: { "line-color": "#000000", "line-width": 6, "line-opacity": 0.7 } });
-        map.addLayer({ id: "detail-route-lines", type: "line", source: SOURCE_IDS[1], paint: { "line-color": "#ff7f00", "line-width": 3 } });
+        map.addLayer({ id: "detail-route-lines", type: "line", source: SOURCE_IDS[1], paint: { "line-color": ["match", ["get", "transport_mode"], "TransportMode.WALK", "#ff7f00", "TransportMode.BUS", "#38bdf8", "TransportMode.SUBWAY", "#c084fc", "#ff7f00"], "line-width": 3 } });
         map.addLayer({ id: "detail-facility-fill", type: "fill", source: SOURCE_IDS[2], paint: { "fill-color": "#5ee388", "fill-opacity": 0.6 } });
         map.addLayer({ id: "detail-facility-lines", type: "line", source: SOURCE_IDS[2], paint: { "line-color": "#5ee388", "line-width": 3 } });
         setStatus("");
@@ -78,6 +80,7 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
           clearLabels = null;
           if (selectedTract === geoid) {
             selectedTract = null;
+            setActiveModes([]);
             for (const id of ["ntas-base-fill", NTA_FILL_LAYER_ID]) {
               const original = previousFilters.get(id);
               const selected: import("mapbox-gl").FilterSpecification = ["==", ["get", "NTA2020"], ntaCode];
@@ -98,6 +101,8 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
             map.setFilter(id, ["==", ["get", "NTA2020"], ""]);
           }
           const selectedRoutes: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: routes.features.filter((f) => f.properties?.GEOID === geoid) };
+          setTotalMinutes(selectedRoutes.features.reduce((sum, feature) => sum + Number(feature.properties?.travel_time ?? 0) + Number(feature.properties?.wait_time ?? 0), 0) / 60);
+          setActiveModes([...new Set(selectedRoutes.features.map((feature) => String(feature.properties?.transport_mode)))]);
           const ids = new Set(selectedRoutes.features.map((f) => String(f.properties?.nearest_facility_id)));
           const selectedFacilities: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: destinations.features.filter((f) => ids.has(String(f.properties?.facility_id))) };
           (map.getSource(SOURCE_IDS[1]) as GeoJSONSource).setData(selectedRoutes);
@@ -135,7 +140,17 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
     };
   }, [map, ntaCode, sport]);
 
-  if (!status) return null;
+  if (!status && activeModes.length === 0) return null;
+  if (!status) return (
+    <div aria-label="Route transportation modes" style={{ position: "absolute", top: 68, right: 10, zIndex: 1000, width: "max-content", maxWidth: "calc(100% - 20px)", padding: "12px 16px", background: "#000", border: "1px solid #444", color: "#fff", fontSize: 12 }}>
+      <div style={{ marginBottom: 12, fontWeight: 600 }}>Total travel time: {totalMinutes.toFixed(1)} min</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {[{ mode: "TransportMode.WALK", label: "Walk", color: "#ff7f00" }, { mode: "TransportMode.BUS", label: "Bus", color: "#38bdf8" }, { mode: "TransportMode.SUBWAY", label: "Subway", color: "#c084fc" }].filter((item) => activeModes.includes(item.mode)).map((item) => (
+        <span key={item.mode} style={{ display: "flex", alignItems: "center", gap: 6 }}><span aria-hidden="true" style={{ width: 18, height: 3, background: item.color }} />{item.label}</span>
+      ))}
+      </div>
+    </div>
+  );
 
   return (
     <div role="status" style={{ position: "absolute", bottom: 32, right: 12, maxWidth: "min(360px, calc(100% - 70px))", padding: "12px 14px", background: "#000e", border: "1px solid #444", color: "#fff", fontSize: 12, lineHeight: 1.5, zIndex: 1000 }}>

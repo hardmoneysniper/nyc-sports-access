@@ -44,3 +44,4 @@ export function addFacilityLabels(map: MapboxMap, facilities: GeoJSON.FeatureCol
   place();
   return () => { map.off("move", place); map.off("resize", place); labels.forEach(({ element }) => element.remove()); };
 }
+

@@ -544,7 +544,7 @@ export default function ExplorePage() {
             {detailNta ? (<button type="button" onClick={returnToCitywide} style={{ position: "absolute", bottom: 32, right: 10, zIndex: 1000, padding: "12px 16px", border: "1px solid #555", background: "#000", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Return to Citywide Data</button>) : sportType && accessMetric && (
               <MapLegend title={`${sportLabel} ${accessMetric === "travel_time" ? "Average Travel Time (minutes)" : "Access Burden Score"}`} colors={BURDEN_BIN_COLORS} labels={accessMetric === "burden_index" ? BURDEN_SCORE_BAND_LABELS : TRAVEL_TIME_BAND_LABELS} />
             )}
-            {detailNta && <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, padding: "12px 16px", border: "1px solid #555", background: "#000", color: "#fff", fontSize: 18, fontWeight: 700 }}>{detailNtaName || detailNta} - {({ MN: "Manhattan", BX: "Bronx", BK: "Brooklyn", QN: "Queens", SI: "Staten Island" } as Record<string, string>)[detailNta.slice(0, 2)] ?? ""}</div>}
+            {detailNta && <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, width: 260, maxWidth: "calc(100% - 20px)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "12px 16px", border: "1px solid #555", background: "#000", color: "#fff", fontSize: 18, fontWeight: 700 }}>{detailNtaName || detailNta} - {({ MN: "Manhattan", BX: "Bronx", BK: "Brooklyn", QN: "Queens", SI: "Staten Island" } as Record<string, string>)[detailNta.slice(0, 2)] ?? ""}</div>}
             {!detailNta && tooltip?.slot === "travel-time" && canShowStats(tooltip.slot, tooltip.ntaCode) && <NtaTooltip info={tooltip} />}
           </div>
           {demographicCategory && (
