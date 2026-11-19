@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
+import type * as GeoJSON from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { colorForValue, colorForBurdenValue, NO_DATA_COLOR } from "@/lib/colorScale";
 import {
