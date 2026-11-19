@@ -40,20 +40,20 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Exported per-NTA drill-down data (tract/route/facility) -- ~566MB total,
-# covering all 262 NTAs, but the methodology page's Travel Time tab only
-# ever needs Elmhurst's (QN0401) slice of it for its one worked example.
-# Ignore the directories wholesale, then un-ignore just those specific
-# files, so the ones actually fetched at runtime still deploy. Per project
-# owner instruction, 2026-10-06 (found during a "why is this slow/missing
-# in production" check -- the whole directories were gitignored with a
-# stale comment claiming nothing live used them).
+# Exported per-NTA drill-down data (tract/route/facility) -- the raw
+# per-NTA route exports in routes/ (every sport x both time windows x every
+# route option) run ~548MB total and are pipeline intermediate output, not
+# something the frontend ever fetches directly -- stay ignored. tracts/ is
+# only ~8MB total for all 262 NTAs, so it's committed in full. routes/ only
+# un-ignores the pre-filtered soccer/weekday_evening slice per NTA (see
+# scripts/extract_soccer_weekday_evening_routes.py) -- the only sport+window
+# NtaRouteDetail.tsx currently renders. Originally un-ignored for just
+# Elmhurst's (QN0401) worked example (per project owner instruction,
+# 2026-10-06); widened to every NTA per project owner instruction,
+# 2026-11-18, after a teammate found the committed route/tract data only
+# covered Elmhurst.
 /public/data/routes/*
-!/public/data/routes/QN0401_soccer_weekday_evening.geojson
-/public/data/tracts/*
-!/public/data/tracts/QN0401.geojson
-!/public/data/tracts/QN0401_boundary.geojson
-!/public/data/tracts/QN0401_origins.geojson
+!/public/data/routes/*_soccer_weekday_evening.geojson
 /public/data/facilities/*
 !/public/data/facilities/soccer.geojson
 /public/data/nta_boundaries.geojson
