@@ -12,10 +12,9 @@ const HEADING_PREFIX = "How close is the ";
 const CAROUSEL_IMAGES = [
   "/imgs/3.jpg",
   "/imgs/1.jpg",
-  "/imgs/5.jpg",
-  "/imgs/2.jpg",
-  "/imgs/6.jpg",
   "/imgs/4.jpg",
+  "/imgs/2.jpg",
+  "/imgs/5.jpg",
 ].map(withBasePath);
 
 const TYPE_MS = 70;
