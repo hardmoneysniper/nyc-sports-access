@@ -45,15 +45,44 @@ next-env.d.ts
 # route option) run ~548MB total and are pipeline intermediate output, not
 # something the frontend ever fetches directly -- stay ignored. tracts/ is
 # only ~8MB total for all 262 NTAs, so it's committed in full. routes/ only
-# un-ignores the pre-filtered soccer/weekday_evening slice per NTA (see
-# scripts/extract_soccer_weekday_evening_routes.py) -- the only sport+window
-# NtaRouteDetail.tsx currently renders. Originally un-ignored for just
-# Elmhurst's (QN0401) worked example (per project owner instruction,
-# 2026-10-06); widened to every NTA per project owner instruction,
-# 2026-11-18, after a teammate found the committed route/tract data only
-# covered Elmhurst.
+# un-ignores the pre-filtered weekday_evening slice per NTA per
+# display-level sport (see scripts/extract_sport_weekday_evening_routes.py)
+# -- the only window NtaRouteDetail.tsx renders, for whichever sport is
+# selected -- not the raw per-NTA files above. No raw file ends in
+# "_weekday_evening.geojson" (they're bare "{NTA}.geojson"), so one glob
+# covers every sport without listing all 21 display-level names. Originally
+# un-ignored for just soccer + Elmhurst's (QN0401) worked example (per
+# project owner instruction, 2026-10-06 and 2026-11-18); widened to every
+# sport per project owner instruction, 2026-11-19, after a teammate found
+# only soccer's routes had been committed.
 /public/data/routes/*
-!/public/data/routes/*_soccer_weekday_evening.geojson
+!/public/data/routes/*_weekday_evening.geojson
+# facilities/ keeps the 24 raw per-column exports (adult_base.geojson,
+# flagfootba.geojson, ll_baseb_1.geojson, etc.) ignored -- only the 21
+# merged display-level files SPORT_TYPE_GROUPS produces (see
+# export_dashboard_data.py's export_facilities_by_sport()) are fetched by
+# the frontend. Their names don't share a glob-friendly pattern distinct
+# from the raw ones, so they're listed explicitly instead.
 /public/data/facilities/*
+!/public/data/facilities/adult_baseball.geojson
+!/public/data/facilities/adult_football.geojson
+!/public/data/facilities/adult_softball.geojson
+!/public/data/facilities/basketball.geojson
+!/public/data/facilities/bocce.geojson
+!/public/data/facilities/cricket.geojson
+!/public/data/facilities/frisbee.geojson
+!/public/data/facilities/handball.geojson
+!/public/data/facilities/hockey.geojson
+!/public/data/facilities/kickball.geojson
+!/public/data/facilities/lacrosse.geojson
+!/public/data/facilities/netball.geojson
+!/public/data/facilities/pickleball.geojson
+!/public/data/facilities/rugby.geojson
 !/public/data/facilities/soccer.geojson
+!/public/data/facilities/tennis.geojson
+!/public/data/facilities/track_and_field.geojson
+!/public/data/facilities/volleyball.geojson
+!/public/data/facilities/youth_baseball.geojson
+!/public/data/facilities/youth_football.geojson
+!/public/data/facilities/youth_softball.geojson
 /public/data/nta_boundaries.geojson

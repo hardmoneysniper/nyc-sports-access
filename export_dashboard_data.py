@@ -28,11 +28,16 @@ Writes to frontend/public/data/:
   24 sport types, both 5pm windows), one file per NTA -- split from the
   573MB data/processed/evening_routes_detailed.geojson so the browser never
   has to fetch more than one NTA's worth of routes at a time.
-- facilities/{sport_type}.geojson: every active facility of that sport
-  type's actual polygon shape (not the representative_point() used for
-  routing), one file per sport type (24 files) -- a global lookup, since
-  which facility is "nearest" varies per tract/NTA but a facility's shape
-  doesn't depend on who's routing to it.
+- facilities/{sport}.geojson: every active facility of that display-level
+  sport's actual polygon shape (not the representative_point() used for
+  routing), one file per SPORT_TYPE_GROUPS category (21 files, merging raw
+  sub-type columns the same way export_travel_time() does) -- a global
+  lookup, since which facility is "nearest" varies per tract/NTA but a
+  facility's shape doesn't depend on who's routing to it. facility_id is
+  the row's index in the full facilities shapefile (globally unique across
+  every sport type, not reset per type), so merging raw sub-type columns
+  needs no id rewriting, just a dedupe for the rare facility active under
+  more than one raw sub-type.
 
 Per-NTA (not a single citywide file) because dumping all 262 NTAs' routes
 into one file would mean shipping a meaningful fraction of that 573MB to
@@ -255,13 +260,15 @@ def export_facilities_by_sport():
     active = facilities_module.load_active_facilities()
     output_dir = OUTPUT_DIR / "facilities"
     output_dir.mkdir(parents=True, exist_ok=True)
-    for sport_type in config.SPORT_TYPE_COLUMNS:
-        sport_facilities = facilities_module.facilities_for_sport_type(active, sport_type)
-        result = sport_facilities[["geometry"]].copy()
+    for sport, raw_types in config.SPORT_TYPE_GROUPS.items():
+        parts = [facilities_module.facilities_for_sport_type(active, raw_type) for raw_type in raw_types]
+        merged = pd.concat(parts) if len(parts) > 1 else parts[0]
+        merged = merged[~merged.index.duplicated()]
+        result = merged[["geometry"]].copy()
         result["facility_id"] = result.index.astype(str)
         result = gpd.GeoDataFrame(result, geometry="geometry", crs=config.CRS_GEOGRAPHIC)
-        result.to_file(output_dir / f"{sport_type}.geojson", driver="GeoJSON")
-    print(f"Wrote {len(config.SPORT_TYPE_COLUMNS)} per-sport-type facility files to {output_dir}")
+        result.to_file(output_dir / f"{sport}.geojson", driver="GeoJSON")
+    print(f"Wrote {len(config.SPORT_TYPE_GROUPS)} per-sport facility files to {output_dir}")
 
 
 def main():
