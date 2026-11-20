@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Map as MapboxMap, MapLayerMouseEvent, GeoJSONSource } from "mapbox-gl";
 import { addFacilityLabels } from "@/lib/facilityLabels";
+import { selectTractRoute } from "@/lib/tractRoute";
 import { withBasePath } from "@/lib/basePath";
 import { featureCollectionBounds } from "@/lib/geoBounds";
 import { ntaCodeToFeatureId } from "@/lib/ntaId";
@@ -10,6 +11,9 @@ import { NTA_SOURCE_ID, NTA_FILL_LAYER_ID, NTA_LINE_LAYER_ID, MAPBOX_MAX_ZOOM } 
 
 const SOURCE_IDS = ["detail-tracts", "detail-routes", "detail-facilities"];
 const TRACT_HIT_LAYER = "detail-tract-hit";
+// Keep neighborhood detail independent of the citywide choropleth.
+const TRACT_FILL_COLOR = "#b8bdc2";
+const TRACT_FILL_OPACITY = 0.25;
 const LAYER_IDS = [TRACT_HIT_LAYER, "detail-tract-lines", "detail-selected-tract-line", "detail-route-halo", "detail-route-lines", "detail-facility-fill", "detail-facility-lines"];
 
 async function readData(path: string, signal: AbortSignal, allowMissing = false): Promise<GeoJSON.FeatureCollection> {
@@ -36,15 +40,11 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
       try {
         const tracts = await readData(`tracts/${ntaCode}.geojson`, controller.signal);
         if (controller.signal.aborted) return;
-        for (const [id, filter] of previousFilters) {
-          if (id === NTA_LINE_LAYER_ID || id === "ntas-investment-priorities") {
-            map.setFilter(id, ["==", ["get", "NTA2020"], ""]);
-            continue;
-          }
-          const selectedFilter: import("mapbox-gl").FilterSpecification = ["==", ["get", "NTA2020"], ntaCode];
-          map.setFilter(id, filter ? ["all", filter, selectedFilter] : selectedFilter);
+        for (const id of previousFilters.keys()) {
+          map.setFilter(id, ["==", ["get", "NTA2020"], ""]);
         }
         map.addSource(SOURCE_IDS[0], { type: "geojson", data: tracts });
+        map.addLayer({ id: TRACT_HIT_LAYER, type: "fill", source: SOURCE_IDS[0], paint: { "fill-color": TRACT_FILL_COLOR, "fill-opacity": TRACT_FILL_OPACITY } });
         map.addLayer({ id: "detail-tract-lines", type: "line", source: SOURCE_IDS[0], paint: { "line-color": "#ffffff", "line-width": 1.5, "line-opacity": 1 } });
         map.addLayer({ id: "detail-selected-tract-line", type: "line", source: SOURCE_IDS[0], filter: ["==", ["get", "GEOID"], ""], paint: { "line-color": "#ffffff", "line-width": 2.5, "line-opacity": 1 } });
         map.setFeatureState({ source: NTA_SOURCE_ID, id: ntaCodeToFeatureId(ntaCode) }, { detail: true });
@@ -58,9 +58,8 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
         const empty: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
         map.addSource(SOURCE_IDS[1], { type: "geojson", data: empty });
         map.addSource(SOURCE_IDS[2], { type: "geojson", data: empty });
-        map.addLayer({ id: TRACT_HIT_LAYER, type: "fill", source: SOURCE_IDS[0], paint: { "fill-color": "#ffffff", "fill-opacity": 0.01 } }, "detail-tract-lines");
         map.addLayer({ id: "detail-route-halo", type: "line", source: SOURCE_IDS[1], paint: { "line-color": "#000000", "line-width": 6, "line-opacity": 0.7 } });
-        map.addLayer({ id: "detail-route-lines", type: "line", source: SOURCE_IDS[1], paint: { "line-color": ["match", ["get", "transport_mode"], "TransportMode.WALK", "#ff7f00", "TransportMode.BUS", "#38bdf8", "TransportMode.SUBWAY", "#c084fc", "TransportMode.RAIL", "#facc15", "#ff7f00"], "line-width": 3 } });
+        map.addLayer({ id: "detail-route-lines", type: "line", source: SOURCE_IDS[1], paint: { "line-color": ["match", ["get", "transport_mode"], "TransportMode.WALK", "#ff7f00", "TransportMode.BUS", "#38bdf8", "TransportMode.SUBWAY", "#c084fc", "TransportMode.RAIL", "#facc15", "TransportMode.FERRY", "#f472b6", "#ff7f00"], "line-width": 3 } });
         map.addLayer({ id: "detail-facility-fill", type: "fill", source: SOURCE_IDS[2], paint: { "fill-color": "#5ee388", "fill-opacity": 0.6 } });
         map.addLayer({ id: "detail-facility-lines", type: "line", source: SOURCE_IDS[2], paint: { "line-color": "#5ee388", "line-width": 3 } });
         setStatus("");
@@ -73,15 +72,9 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
           if (selectedTract === geoid) {
             selectedTract = null;
             setActiveModes([]);
-            for (const id of ["ntas-base-fill", NTA_FILL_LAYER_ID]) {
-              const original = previousFilters.get(id);
-              const selected: import("mapbox-gl").FilterSpecification = ["==", ["get", "NTA2020"], ntaCode];
-              map.setFilter(id, original ? ["all", original, selected] : selected);
-            }
             (map.getSource(SOURCE_IDS[1]) as GeoJSONSource).setData(empty);
             (map.getSource(SOURCE_IDS[2]) as GeoJSONSource).setData(empty);
-            map.setPaintProperty(TRACT_HIT_LAYER, "fill-color", "#ffffff");
-            map.setPaintProperty(TRACT_HIT_LAYER, "fill-opacity", 0.01);
+            map.setPaintProperty(TRACT_HIT_LAYER, "fill-opacity", TRACT_FILL_OPACITY);
             map.setPaintProperty("detail-tract-lines", "line-color", "#ffffff");
             map.setFilter("detail-selected-tract-line", ["==", ["get", "GEOID"], ""]);
             setStatus("");
@@ -89,12 +82,7 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
             return;
           }
           selectedTract = geoid;
-          // Remove the underlying NTA fills too, so unselected tracts
-          // reveal the basemap rather than the neighborhood tint.
-          for (const id of ["ntas-base-fill", NTA_FILL_LAYER_ID]) {
-            map.setFilter(id, ["==", ["get", "NTA2020"], ""]);
-          }
-          const selectedRoutes: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: routes.features.filter((f) => f.properties?.GEOID === geoid) };
+          const selectedRoutes = selectTractRoute(routes, String(geoid));
           setTotalMinutes(selectedRoutes.features.reduce((sum, feature) => sum + Number(feature.properties?.travel_time ?? 0) + Number(feature.properties?.wait_time ?? 0), 0) / 60);
           setActiveModes([...new Set(selectedRoutes.features.map((feature) => String(feature.properties?.transport_mode)))]);
           const ids = new Set(selectedRoutes.features.map((f) => String(f.properties?.nearest_facility_id)));
@@ -102,8 +90,7 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
           (map.getSource(SOURCE_IDS[1]) as GeoJSONSource).setData(selectedRoutes);
           (map.getSource(SOURCE_IDS[2]) as GeoJSONSource).setData(selectedFacilities);
           clearLabels = addFacilityLabels(map, selectedFacilities, selectedRoutes);
-          map.setPaintProperty(TRACT_HIT_LAYER, "fill-color", ["case", ["==", ["get", "GEOID"], geoid], "#607d94", "#555555"]);
-          map.setPaintProperty(TRACT_HIT_LAYER, "fill-opacity", ["case", ["==", ["get", "GEOID"], geoid], 0.3, 0]);
+          map.setPaintProperty(TRACT_HIT_LAYER, "fill-opacity", ["case", ["==", ["get", "GEOID"], geoid], TRACT_FILL_OPACITY, 0]);
           map.setPaintProperty("detail-tract-lines", "line-color", "#bbbbbb");
           map.setFilter("detail-selected-tract-line", ["==", ["get", "GEOID"], geoid]);
           if (!selectedRoutes.features.length) {
@@ -141,7 +128,7 @@ export default function NtaRouteDetail({ map, ntaCode, sport }: { map: MapboxMap
     <div aria-label="Route transportation modes" style={{ position: "absolute", top: 68, right: 10, zIndex: 1000, width: "max-content", maxWidth: "calc(100% - 20px)", padding: "12px 16px", background: "#000", border: "1px solid #444", color: "#fff", fontSize: 12 }}>
       <div style={{ marginBottom: 12, fontWeight: 600 }}>Total travel time: {totalMinutes.toFixed(1)} min</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {[{ mode: "TransportMode.WALK", label: "Walk", color: "#ff7f00" }, { mode: "TransportMode.BUS", label: "Bus", color: "#38bdf8" }, { mode: "TransportMode.SUBWAY", label: "Subway", color: "#c084fc" }, { mode: "TransportMode.RAIL", label: "Rail", color: "#facc15" }].filter((item) => activeModes.includes(item.mode)).map((item) => (
+      {[{ mode: "TransportMode.WALK", label: "Walk", color: "#ff7f00" }, { mode: "TransportMode.BUS", label: "Bus", color: "#38bdf8" }, { mode: "TransportMode.SUBWAY", label: "Subway", color: "#c084fc" }, { mode: "TransportMode.RAIL", label: "Rail", color: "#facc15" }, { mode: "TransportMode.FERRY", label: "Ferry", color: "#f472b6" }].filter((item) => activeModes.includes(item.mode)).map((item) => (
         <span key={item.mode} style={{ display: "flex", alignItems: "center", gap: 6 }}><span aria-hidden="true" style={{ width: 18, height: 3, background: item.color }} />{item.label}</span>
       ))}
       </div>
