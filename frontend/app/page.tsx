@@ -10,13 +10,13 @@ const HEADING_PREFIX = "How close is the ";
 // Shuffled display order (not 1-7 in sequence), per project owner
 // instruction, 2026-10-05.
 const CAROUSEL_IMAGES = [
-  "/imgs/3.png",
+  "/imgs/3.jpg",
   "/imgs/6.jpg",
-  "/imgs/1.png",
+  "/imgs/1.jpg",
   "/imgs/5.jpg",
-  "/imgs/2.png",
+  "/imgs/2.jpg",
   "/imgs/7.jpg",
-  "/imgs/4.png",
+  "/imgs/4.jpg",
 ].map(withBasePath);
 
 const TYPE_MS = 70;
